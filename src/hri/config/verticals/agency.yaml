@@ -1,0 +1,30 @@
+# Second vertical (marketing agency new business). NOT BUILT - exists only to
+# demonstrate the configuration claim in the ADR: switching vertical changes
+# entity labels, warmth weighting and brief sections with zero engine changes.
+name: agency_new_business
+internal_domains: [agency.example]
+bulk_markers: [List-Unsubscribe]
+counterparty_kinds:
+  company: Client / prospect
+  advisory: Intermediary / consultant
+  other: Individual
+warmth:
+  half_life_days: 45
+  weights: { meeting: 2.5, inbound: 1.5, outbound: 0.5 }
+  scale: 10.0
+  warm_threshold: 35
+  peak_lookback_days: 365
+quiet:
+  gap_multiplier: 2.5
+  min_gap_days: 30
+  kind_min_gap_days: { company: 30, advisory: 60, other: 60 }
+brief:
+  sections:
+    - who: Who they are
+    - history: Account history
+    - last_discussed: Last brief / campaign discussed
+    - our_commitments: Deliverables we owe
+    - their_commitments: Approvals / assets they owe
+    - signals: Account health
+  max_words: 250
+  recent_threads: 6

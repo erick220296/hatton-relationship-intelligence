@@ -1,0 +1,45 @@
+# Vertical configuration: private-equity deal origination (Hatton Capital).
+# The engine reads ONLY this file for domain behaviour. See agency.yaml for the
+# second-vertical proof referenced in the ADR (not built, per sponsor).
+name: pe_deal_origination
+internal_domains: [hattoncap.example]
+bulk_markers: [List-Unsubscribe]
+
+counterparty_kinds:
+  company: Founder / management
+  bank: Intermediary (banker)
+  fund: LP / co-investor
+  law: Legal adviser
+  advisory: Adviser / operating partner
+  other: Individual
+
+warmth:
+  half_life_days: 90            # exponential decay of an interaction's contribution
+  weights:                      # per interaction
+    meeting: 3.0
+    inbound: 1.5                # they wrote to us (reciprocity)
+    outbound: 0.6               # we wrote to them
+  scale: 12.0                   # score = 100 * (1 - exp(-raw / scale))
+  warm_threshold: 35            # warm if score >= this
+  peak_lookback_days: 540
+
+quiet:
+  # "quiet" = was warm (peak >= warm_threshold) AND
+  # days since last inbound contact > max(min_gap_days, gap_multiplier * median gap)
+  gap_multiplier: 3.0
+  min_two_way: 4               # an 'established' relationship: >=4 two-way contacts...
+  min_span_days: 90            # ...spread over >= 90 days within the lookback
+  min_gap_days: 60
+  # per-kind overrides: bankers are expected to be in touch more often
+  kind_min_gap_days: { bank: 45, company: 60, fund: 120, law: 120, advisory: 90, other: 90 }
+
+brief:
+  sections:
+    - who: Who they are (title, organisation, how we know them)
+    - history: Our history (first contact, volume, meetings, which partners)
+    - last_discussed: What was last discussed
+    - our_commitments: What we said we would do (open)
+    - their_commitments: What they said they would do (open)
+    - signals: Relationship signals (warmth trend, quiet flag)
+  max_words: 300
+  recent_threads: 8

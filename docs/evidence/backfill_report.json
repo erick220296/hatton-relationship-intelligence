@@ -1,0 +1,40 @@
+{
+ "load": {
+  "messages": 38299,
+  "people": 1420,
+  "orgs": 385,
+  "meetings": 3478,
+  "skipped_bulk": 1600,
+  "quarantined": [
+   {
+    "id": "m_bad_2",
+    "reason": "bad address: None"
+   },
+   {
+    "id": "m_bad_3",
+    "reason": "body too large (2000000 chars)"
+   },
+   {
+    "id": "m_bad_1",
+    "reason": "unparseable date 'not-a-date'"
+   }
+  ],
+  "seconds": 70.3
+ },
+ "embed": {
+  "embedded": 38299,
+  "seconds": 2631.2,
+  "model": "BAAI/bge-small-en-v1.5 (local)"
+ },
+ "edges": {
+  "edges": 2390,
+  "by_status": {
+   "cold": 1432,
+   "warm": 565,
+   "cooling": 245,
+   "quiet": 98,
+   "new": 50
+  },
+  "seconds": 2.6
+ }
+}

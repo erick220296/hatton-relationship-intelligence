@@ -1,0 +1,140 @@
+{
+ "cooled_in_corpus": 60,
+ "flagged_quiet": 98,
+ "true_positives": 56,
+ "false_positives": 17,
+ "false_negatives": 4,
+ "precision": 0.767,
+ "recall": 0.933,
+ "f1": 0.842,
+ "dead_deals_flagged": "25/25",
+ "confusion": {
+  "cooling -> quiet": 56,
+  "cooling -> warm": 4,
+  "deal_died -> quiet": 25,
+  "dormant -> cold": 217,
+  "dormant -> cooling": 25,
+  "dormant -> new": 5,
+  "dormant -> quiet": 7,
+  "dormant -> warm": 2,
+  "one_off -> cold": 324,
+  "one_off -> cooling": 125,
+  "one_off -> new": 5,
+  "one_off -> quiet": 2,
+  "one_off -> warm": 10,
+  "unknown -> cold": 873,
+  "unknown -> new": 35,
+  "warm_steady -> cold": 7,
+  "warm_steady -> cooling": 81,
+  "warm_steady -> quiet": 7,
+  "warm_steady -> warm": 457,
+  "warming -> cold": 11,
+  "warming -> cooling": 14,
+  "warming -> new": 5,
+  "warming -> quiet": 1,
+  "warming -> warm": 92
+ },
+ "missed": [
+  {
+   "partner": "brandon.wells@hattoncap.example",
+   "person": "adam.tucker@patelllp.example",
+   "status_given": "warm",
+   "change_point": "2026-08-08T23:03:35.431425+00:00"
+  },
+  {
+   "partner": "melissa.grant@hattoncap.example",
+   "person": "kelly.burns@lambertlegal.example",
+   "status_given": "warm",
+   "change_point": "2026-07-28T10:38:32.488221+00:00"
+  },
+  {
+   "partner": "russell.hughes@hattoncap.example",
+   "person": "mohammed.green@chadwickadvisory.example",
+   "status_given": "warm",
+   "change_point": "2026-08-03T16:26:44.971330+00:00"
+  },
+  {
+   "partner": "sally.fletcher@hattoncap.example",
+   "person": "bethan.graham@barnesassetmanagem.example",
+   "status_given": "warm",
+   "change_point": "2026-08-08T06:47:09.363295+00:00"
+  }
+ ],
+ "false_positive_examples": [
+  {
+   "partner": "brandon.wells@hattoncap.example",
+   "person": "abigail.bennett@slatercapitaladvis.example",
+   "trajectory": "dormant"
+  },
+  {
+   "partner": "brandon.wells@hattoncap.example",
+   "person": "brett.hunt@priceinc.example",
+   "trajectory": "warm_steady"
+  },
+  {
+   "partner": "brandon.wells@hattoncap.example",
+   "person": "denis.williams@lowe.example",
+   "trajectory": "dormant"
+  },
+  {
+   "partner": "brandon.wells@hattoncap.example",
+   "person": "maurice.marshall@norrisgoodwin.example",
+   "trajectory": "warm_steady"
+  },
+  {
+   "partner": "brandon.wells@hattoncap.example",
+   "person": "sylvia.harris@turnerlegal.example",
+   "trajectory": "one_off"
+  },
+  {
+   "partner": "eileen.whitehead@hattoncap.example",
+   "person": "francis.dickinson@hallcapitaladvisor.example",
+   "trajectory": "warm_steady"
+  },
+  {
+   "partner": "eileen.whitehead@hattoncap.example",
+   "person": "grace.leonard@smithlegal.example",
+   "trajectory": "warm_steady"
+  },
+  {
+   "partner": "eileen.whitehead@hattoncap.example",
+   "person": "natalie.lynch@inbox.example",
+   "trajectory": "warm_steady"
+  },
+  {
+   "partner": "joanne.parry@hattoncap.example",
+   "person": "grace.parkinson@priceinc.example",
+   "trajectory": "dormant"
+  },
+  {
+   "partner": "joanne.parry@hattoncap.example",
+   "person": "kayleigh.clarke@graygroup.example",
+   "trajectory": "warming"
+  },
+  {
+   "partner": "melissa.grant@hattoncap.example",
+   "person": "jack.nicholls@stanleyco.example",
+   "trajectory": "dormant"
+  },
+  {
+   "partner": "melissa.grant@hattoncap.example",
+   "person": "julie.hyde@hughespartnersllp.example",
+   "trajectory": "warm_steady"
+  },
+  {
+   "partner": "melissa.grant@hattoncap.example",
+   "person": "leah.payne@wheelersecurities.example",
+   "trajectory": "dormant"
+  },
+  {
+   "partner": "melissa.grant@hattoncap.example",
+   "person": "robert.griffiths@robertsco.example",
+   "trajectory": "one_off"
+  },
+  {
+   "partner": "melissa.grant@hattoncap.example",
+   "person": "yvonne.may@whitepartnersllp.example",
+   "trajectory": "warm_steady"
+  }
+ ]
+}

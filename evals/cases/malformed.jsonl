@@ -1,0 +1,5 @@
+{"id": "mx1", "thread_id": "tx", "mailbox": "x@hattoncap.example", "date": "31/02/2026", "from": {"name": "A", "email": "a@b.example"}, "to": [{"name": "X", "email": "x@hattoncap.example"}], "subject": "bad date", "body": "x"}
+{"id": "mx2", "thread_id": "tx", "mailbox": "x@hattoncap.example", "date": "2026-11-25T09:00:00+00:00", "from": "not an object", "to": [], "subject": "bad from", "body": "x"}
+{"id": "mx3", "thread_id": "tx", "mailbox": "x@hattoncap.example", "date": "2026-11-25T09:00:00", "from": {"name": "A", "email": "a@b.example"}, "to": [{"name": "X", "email": "x@hattoncap.example"}], "subject": "naive tz", "body": "x"}
+{"id": "mx4", "thread_id": "tx", "mailbox": "x@hattoncap.example", "date": "2026-11-25T09:00:00+00:00", "from": {"name": "A", "email": "no-at-sign"}, "to": [{"name": "X", "email": "x@hattoncap.example"}], "subject": "bad email", "body": "x"}
+{"id": "", "thread_id": "", "mailbox": "", "date": ""}
