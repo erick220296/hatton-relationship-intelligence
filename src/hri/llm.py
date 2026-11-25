@@ -39,6 +39,13 @@ def client() -> anthropic.Anthropic:
                                max_retries=1, timeout=settings().brief_timeout_s)
 
 
+@lru_cache
+def batch_client() -> anthropic.Anthropic:
+    """Long-timeout client for Message Batches uploads (still through the audited egress door)."""
+    return anthropic.Anthropic(api_key=settings().anthropic_api_key or None, http_client=egress_client(timeout=600),
+                               max_retries=0, timeout=600)
+
+
 def complete(*, model: str, system: str, user: str, purpose: str, max_tokens: int = 2000,
              json_schema: dict | None = None, effort: str | None = "low") -> LLMResult:
     if kill_switch():

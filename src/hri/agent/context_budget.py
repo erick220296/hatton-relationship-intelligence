@@ -36,6 +36,9 @@ class Budgeted:
     stats: dict = field(default_factory=dict)
 
 
+MAX_INDEX_LINES = 40   # older threads listed as one-liners; beyond this they are counted, not shown
+
+
 def build_context(profile: dict, threads: list[dict], commitments: list[dict], index: list[dict],
                   search_hits: list[dict], budget: int) -> Budgeted:
     out: list[str] = []
@@ -92,8 +95,11 @@ def build_context(profile: dict, threads: list[dict], commitments: list[dict], i
 
     older = [x for x in index if x["thread_id"] not in shown_threads]
     if older:
-        add(f"## OLDER THREADS (index only, {len(older)} total)")
-        for x in older:
+        add(f"## OLDER THREADS (index only, newest {min(len(older), MAX_INDEX_LINES)} of {len(older)})")
+        for n, x in enumerate(older):
+            if n >= MAX_INDEX_LINES:
+                stats["threads_dropped"] += len(older) - n
+                break
             if add(f"- [{x['first_id']}] {str(x['started'])[:10]} \"{x['subject']}\" ({x['n_messages']} msgs)",
                    [x["first_id"]]):
                 stats["threads_indexed"] += 1

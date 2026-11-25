@@ -122,7 +122,7 @@ async def gather(s: BriefState) -> dict:
                 t.call("get_relationship", person_id=pid),
                 t.call("get_recent_threads", person_id=pid, limit_threads=vertical()["brief"]["recent_threads"]),
                 t.call("get_commitments", person_id=pid),
-                t.call("get_thread_index", person_id=pid, limit=150))
+                t.call("get_thread_index", person_id=pid, limit=1000))
             hits = []
             if s.get("meeting") and s["meeting"].get("title"):
                 try:
@@ -165,7 +165,7 @@ async def build(s: BriefState) -> dict:
     if withheld:
         warnings.append(f"{len(withheld)} message(s) withheld: they contained instructions aimed at AI systems "
                         f"({', '.join(w['id'] for w in withheld)}). Review manually.")
-    if ctx.stats["threads_dropped"] or ctx.stats["threads_indexed"] > 0 and len(d["index"]) > 20:
+    if ctx.stats["threads_dropped"] or ctx.stats["threads_indexed"] > 20:
         warnings.append(f"Long history: {ctx.stats['threads_full']} threads in full, "
                         f"{ctx.stats['threads_indexed']} as index lines, {ctx.stats['threads_dropped']} omitted "
                         f"to fit the {ctx.stats['budget']}-token context budget.")

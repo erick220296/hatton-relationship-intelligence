@@ -48,5 +48,24 @@
  "ner": {
   "new_terms": 904,
   "seconds": 102.0
+ },
+ "extract_actual": {
+  "threads": 14818,
+  "batches": [
+   "msgbatch_01RjiTYHgzfkrFHwLT3wL3bj",
+   "msgbatch_01HJ9aX5vhosQ4fPC345nviQ",
+   "msgbatch_016dG9Caw4XXcDmBBQQfQiAk",
+   "msgbatch_01X8DpCToAWLqVFXcfk6iUhC",
+   "msgbatch_01U7qfzHneurnr1fAC7NRYuY",
+   "msgbatch_01PM3mWnB84DbEQUFgQ9hzpt",
+   "msgbatch_01VcccGKgs6R2RnmBxEhPUTQ",
+   "msgbatch_012M8c8p8BFQvrbPn9zA4esS"
+  ],
+  "tokens_in": 13730944,
+  "tokens_out": 1567705,
+  "succeeded": 14818,
+  "errored": 0,
+  "wall_minutes": 8.5,
+  "cost_usd": 1.0785
  }
 }

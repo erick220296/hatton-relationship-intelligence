@@ -34,6 +34,8 @@ SCHEMA = {
     "required": ["topic", "commitments"], "additionalProperties": False,
 }
 EST_OUTPUT_TOKENS = 90
+# Calibrated against the 2026-11-25 backfill: estimate 11.13M in / 1.33M out vs actual 13.73M / 1.57M.
+CALIBRATION_IN, CALIBRATION_OUT = 1.234, 1.176
 SYSTEM_TOKENS = 180
 
 
@@ -67,8 +69,8 @@ def estimate() -> dict:
     tids = _threads_needing_extraction()
     chars = db.q1("""SELECT COALESCE(SUM(LEAST(length(body), 4000) + length(subject) + 60), 0) AS c
                      FROM message WHERE thread_id = ANY(%s)""", (tids,))["c"]
-    tin = int(chars / 3.6) + SYSTEM_TOKENS * len(tids) + 400 * len(tids)  # +schema overhead
-    tout = EST_OUTPUT_TOKENS * len(tids)
+    tin = int((chars / 3.6 + (SYSTEM_TOKENS + 400) * len(tids)) * CALIBRATION_IN)  # +schema overhead
+    tout = int(EST_OUTPUT_TOKENS * len(tids) * CALIBRATION_OUT)
     m = settings().extract_model
     return {"threads": len(tids), "est_input_tokens": tin, "est_output_tokens": tout, "model": m,
             "est_cost_usd_batch": round(cost_usd(m, tin, tout, batch=True), 2),
@@ -98,34 +100,44 @@ def extract_sync(thread_id: str) -> dict:
     return {"thread_id": thread_id, "cost_usd": res.cost_usd, "tokens_in": res.tokens_in, "tokens_out": res.tokens_out}
 
 
-def extract_batch(limit: int | None = None, poll_s: int = 30) -> dict:
-    """Backfill path: one Message Batch for all threads (chunked at 50k requests)."""
+def extract_batch(limit: int | None = None, poll_s: int = 30, chunk: int = 2000) -> dict:
+    """Backfill path: Message Batches (50% price). Chunks are submitted first, then polled together."""
     from anthropic.types.message_create_params import MessageCreateParamsNonStreaming
     from anthropic.types.messages.batch_create_params import Request
 
-    from hri.llm import client
+    from hri.llm import batch_client
     from hri.privacy.egress import purpose_var
 
     tids = _threads_needing_extraction(limit)
     model = settings().extract_model
     valid: dict[str, set[str]] = {}
-    totals = {"threads": len(tids), "tokens_in": 0, "tokens_out": 0, "succeeded": 0, "errored": 0}
-    for i in range(0, len(tids), 50_000):
-        reqs = []
-        for tid in tids[i:i + 50_000]:
-            prompt, msgs = thread_prompt(tid)
-            valid[tid] = {m["id"] for m in msgs}
-            reqs.append(Request(custom_id=tid, params=MessageCreateParamsNonStreaming(
-                model=model, max_tokens=800, system=SYSTEM, messages=[{"role": "user", "content": prompt}],
-                output_config={"format": {"type": "json_schema", "schema": SCHEMA}, "effort": "low"})))
-        masker().flush()
-        tok = purpose_var.set("extract_batch")
-        try:
-            batch = client().messages.batches.create(requests=reqs)
-            print(f"batch {batch.id}: {len(reqs)} requests submitted")
-            while client().messages.batches.retrieve(batch.id).processing_status != "ended":
-                time.sleep(poll_s)
-            for r in client().messages.batches.results(batch.id):
+    totals = {"threads": len(tids), "batches": [], "tokens_in": 0, "tokens_out": 0, "succeeded": 0, "errored": 0}
+    tok = purpose_var.set("extract_batch")
+    t0 = time.time()
+    try:
+        ids = []
+        for i in range(0, len(tids), chunk):
+            reqs = []
+            for tid in tids[i:i + chunk]:
+                prompt, msgs = thread_prompt(tid)
+                valid[tid] = {m["id"] for m in msgs}
+                reqs.append(Request(custom_id=tid, params=MessageCreateParamsNonStreaming(
+                    model=model, max_tokens=800, system=SYSTEM, messages=[{"role": "user", "content": prompt}],
+                    output_config={"format": {"type": "json_schema", "schema": SCHEMA}, "effort": "low"})))
+            masker().flush()
+            b = batch_client().messages.batches.create(requests=reqs)
+            ids.append(b.id)
+            print(f"submitted batch {b.id} ({len(reqs)} threads)", flush=True)
+        pending = set(ids)
+        while pending:
+            time.sleep(poll_s)
+            for bid in list(pending):
+                b = batch_client().messages.batches.retrieve(bid)
+                if b.processing_status == "ended":
+                    pending.discard(bid)
+                    print(f"batch {bid} ended: {b.request_counts}", flush=True)
+        for bid in ids:
+            for r in batch_client().messages.batches.results(bid):
                 if r.result.type != "succeeded":
                     totals["errored"] += 1
                     continue
@@ -138,7 +150,9 @@ def extract_batch(limit: int | None = None, poll_s: int = 30) -> dict:
                     totals["succeeded"] += 1
                 except (json.JSONDecodeError, KeyError):
                     totals["errored"] += 1
-        finally:
-            purpose_var.reset(tok)
+        totals["batches"] = ids
+    finally:
+        purpose_var.reset(tok)
+    totals["wall_minutes"] = round((time.time() - t0) / 60, 1)
     totals["cost_usd"] = round(cost_usd(model, totals["tokens_in"], totals["tokens_out"], batch=True), 4)
     return totals

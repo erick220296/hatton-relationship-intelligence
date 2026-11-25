@@ -89,8 +89,13 @@ async def brief(req: BriefRequest):
         raise HTTPException(504, "Brief timed out")
     res["run_id"] = run_id
     res["trace_id"] = tracing.current_trace_id()
-    if res["mode"] == "unavailable" and (req.person_id or req.meeting_id):
-        c = _cached(meeting_id=req.meeting_id, person_id=req.person_id)
+    if res["mode"] == "unavailable":
+        pid = req.person_id
+        if not pid and req.query:   # tools are down: resolve the name from our own store instead
+            hits = db.q("SELECT id FROM person WHERE NOT is_partner AND (lower(name)=lower(%s) OR lower(email)=lower(%s))",
+                        (req.query.strip(), req.query.strip()))
+            pid = hits[0]["id"] if len(hits) == 1 else None
+        c = _cached(meeting_id=req.meeting_id, person_id=pid)
         if c:
             res.update(brief=c["content"], mode="stale_cache")
             res["warnings"].append(f"Showing the last good brief from {c['created_at']:%Y-%m-%d %H:%M}.")
