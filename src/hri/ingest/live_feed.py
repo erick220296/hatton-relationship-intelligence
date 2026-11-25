@@ -25,6 +25,9 @@ def process(records: list[dict], extract: bool = True) -> dict:
         vecs = embed_texts([f"{m.subject}\n{m.body[:2000]}" for m in added])
         with db.conn() as c, c.cursor() as cur:
             cur.executemany("UPDATE message SET embedding=%s WHERE id=%s", [(v, m.id) for v, m in zip(vecs, added)])
+    if added:
+        from hri.ingest import ner
+        ner.run([m.id for m in added])
     partners = {r["id"] for r in db.q("SELECT id FROM person WHERE is_partner")}
     pairs = set()
     for m in added:

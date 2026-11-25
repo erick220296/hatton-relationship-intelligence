@@ -22,13 +22,15 @@ backfill-load:
 	$(RUN) python -m hri.ingest.backfill load
 backfill-embed:
 	$(RUN) python -m hri.ingest.backfill embed
+backfill-ner:
+	$(RUN) python -m hri.ingest.backfill ner
 backfill-edges:
 	$(RUN) python -m hri.ingest.backfill edges
 backfill-estimate: ## price the LLM extraction BEFORE running it
 	$(RUN) python -m hri.ingest.backfill estimate
 backfill-extract: ## run the extraction via the Batch API (costs money - run estimate first)
 	$(RUN) python -m hri.ingest.backfill extract
-backfill: backfill-load backfill-embed backfill-edges backfill-estimate
+backfill: backfill-load backfill-embed backfill-ner backfill-edges backfill-estimate
 
 live:             ## replay post-backfill mail (keep the graph current)
 	$(RUN) python -m hri.ingest.live_feed --file data/corpus/live.jsonl

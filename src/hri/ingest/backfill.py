@@ -2,6 +2,7 @@
 
     python -m hri.ingest.backfill load        # contacts, messages, calendar -> graph (no LLM)
     python -m hri.ingest.backfill embed       # local embeddings (in-region, $0 API cost)
+    python -m hri.ingest.backfill ner         # ingest-time NER -> masking dictionary
     python -m hri.ingest.backfill edges       # warmth / quiet scores
     python -m hri.ingest.backfill estimate    # price the LLM extraction BEFORE running it
     python -m hri.ingest.backfill extract [--limit N] [--sync]
@@ -73,6 +74,15 @@ def embed(batch: int = 256):
     print(out)
 
 
+def ner():
+    from hri.ingest import ner as ner_mod
+    t0 = time.time()
+    n = ner_mod.run()
+    out = {"new_terms": n, "seconds": round(time.time() - t0, 1)}
+    _report("ner", out)
+    print(out)
+
+
 def edges():
     t0 = time.time()
     n = warmth.recompute()
@@ -84,7 +94,7 @@ def edges():
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("step", choices=["load", "embed", "edges", "estimate", "extract", "all"])
+    ap.add_argument("step", choices=["load", "embed", "ner", "edges", "estimate", "extract", "all"])
     ap.add_argument("--limit", type=int)
     ap.add_argument("--sync", action="store_true")
     a = ap.parse_args()
@@ -93,6 +103,8 @@ def main():
         load()
     if a.step in ("embed", "all"):
         embed()
+    if a.step in ("ner", "all"):
+        ner()
     if a.step in ("edges", "all"):
         edges()
     if a.step in ("estimate", "all"):

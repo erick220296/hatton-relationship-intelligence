@@ -43,7 +43,7 @@ class BriefState(TypedDict, total=False):
     data: dict               # raw MCP results (unmasked, in-region)
     withheld: list           # messages withheld as prompt-injection attempts
     context: dict            # {masked_text, message_ids, stats}
-    evidence: dict           # message id -> masked text (for the verifier)
+    evidence: dict           # message id -> raw source text (in-region; masked only when sent to the verifier)
     draft: dict
     attempts: int
     verified: dict
@@ -148,16 +148,17 @@ async def build(s: BriefState) -> dict:
     ctx = build_context(d["profile"], d["threads"], d["commitments"], d["index"], d["hits"],
                         settings().context_budget_tokens)
     mk = masker()
-    evidence = {"PROFILE": mk.mask(ctx.text.split("## COMMITMENTS")[0].split("## RECENT THREADS")[0])}
+    # raw (unmasked, in-region) evidence; only the sources a claim actually cites get masked, in verify
+    evidence = {"PROFILE": ctx.text.split("## COMMITMENTS")[0].split("## RECENT THREADS")[0]}
     for t in d["threads"]:
         for m in t["messages"]:
-            evidence[m["id"]] = mk.mask(f"{m['sent_at'][:10]} from {m['sender']}: {m['body'][:2500]}")
+            evidence[m["id"]] = f"{m['sent_at'][:10]} from {m['sender']}, thread \"{t['subject']}\": {m['body'][:2500]}"
     for c in d["commitments"]:
-        evidence.setdefault(c["message_id"], mk.mask(f"{c['sent_at'][:10]} commitment ({c['owner']}): {c['text']}"))
+        evidence.setdefault(c["message_id"], f"{c['sent_at'][:10]} commitment ({c['owner']}): {c['text']}")
     for x in d["index"]:
-        evidence.setdefault(x["first_id"], mk.mask(f"{x['started'][:10]} thread subject: {x['subject']}"))
+        evidence.setdefault(x["first_id"], f"{x['started'][:10]} thread subject: {x['subject']}")
     for h in d["hits"]:
-        evidence.setdefault(h["id"], mk.mask(f"{h['sent_at'][:10]} {h['subject']}: {h['body']}"))
+        evidence.setdefault(h["id"], f"{h['sent_at'][:10]} {h['subject']}: {h['body']}")
     masked = mk.mask(ctx.text)
     mk.flush()
     warnings = list(s.get("warnings", []))
@@ -211,13 +212,13 @@ async def verify(s: BriefState) -> dict:
     warnings = list(s.get("warnings", []))
     cost = s.get("cost_usd", 0.0)
     if claims and _elapsed(s) < settings().brief_timeout_s - 6:
-        ev = s["evidence"]
-        listing = "\n\n".join(f"CLAIM {i}: {c['text']}\nSOURCES:\n" + "\n".join(f"  [{x}] {ev.get(x, '(missing)')}"
-                                                                               for x in c["cites"])
-                              for i, c in enumerate(claims))
+        ev, mk = s["evidence"], masker()
+        listing = "\n\n".join(f"CLAIM {i}: {c['text']}\nSOURCES:\n" + "\n".join(
+            f"  [{x}] {mk.mask(ev.get(x, '(missing)'))}" for x in c["cites"]) for i, c in enumerate(claims))
+        mk.flush()
         try:
             out, res = await asyncio.to_thread(complete_json, model=settings().verify_model, system=VERIFY_SYSTEM,
-                                               user=listing, purpose="brief_verify", max_tokens=2000,
+                                               user=listing, purpose="brief_verify", max_tokens=4000,
                                                json_schema=VERIFY_SCHEMA, effort="low")
             cost += res.cost_usd
             bad = {v["i"]: v["reason"] for v in out["verdicts"] if not v["supported"]}

@@ -4,7 +4,9 @@ Pipeline (all local, nothing leaves the container):
   1. Regex: emails, phone numbers, URLs, UK-postcode address lines.
   2. Dictionary: every known person (full, first, last name), organisation and
      deal codename from the graph -> stable token (PERSON_1a2b3c, ORG_..).
-  3. Optional NER sweep (Presidio + spaCy) for names the graph doesn't know.
+  3. Names/places the graph doesn't know, found by spaCy NER at ingest time (hri.ingest.ner) and
+     loaded into the same dictionary. (A per-request Presidio sweep is available with MASK_NER=1 but
+     costs ~8 s per brief, so it is off on the latency path.)
 
 Tokens are HMAC-derived, so the same real value always gets the same token
 (the model can reason about "PERSON_1a2b3c said X, then PERSON_1a2b3c ..."),
@@ -63,6 +65,11 @@ class Masker:
             org = (r.get("org") or "").strip()
             if org and len(org) > 3:
                 d[org] = ("ORG", org)
+        try:   # names/places found by ingest-time NER (hri.ingest.ner)
+            for r in db.q("SELECT term, kind FROM ner_term"):
+                d.setdefault(r["term"], (r["kind"], r["term"]))
+        except Exception:
+            pass
         self._dict = d
         keys = sorted(d, key=len, reverse=True)
         self._dict_re = re.compile(r"\b(" + "|".join(re.escape(k) for k in keys) + r")\b") if keys else None
@@ -152,6 +159,6 @@ _masker: Masker | None = None
 def masker() -> Masker:
     global _masker
     if _masker is None:
-        _masker = Masker(use_ner=os.getenv("MASK_NER", "1") == "1")
+        _masker = Masker(use_ner=os.getenv("MASK_NER", "0") == "1")
         _masker.load_known_entities()
     return _masker

@@ -63,6 +63,8 @@ def complete(*, model: str, system: str, user: str, purpose: str, max_tokens: in
         purpose_var.reset(token)
     if resp.stop_reason == "refusal":
         raise LLMUnavailable("model refused")
+    if resp.stop_reason == "max_tokens" and json_schema:
+        raise LLMUnavailable(f"{purpose}: output truncated at max_tokens={max_tokens}")
     text = next((b.text for b in resp.content if b.type == "text"), "")
     u = resp.usage
     res = LLMResult(text, model, u.input_tokens, u.output_tokens,
@@ -74,4 +76,7 @@ def complete(*, model: str, system: str, user: str, purpose: str, max_tokens: in
 
 def complete_json(**kw) -> tuple[dict, LLMResult]:
     r = complete(**kw)
-    return json.loads(r.text), r
+    try:
+        return json.loads(r.text), r
+    except json.JSONDecodeError as e:   # treat malformed model output like an unavailable model
+        raise LLMUnavailable(f"{kw.get('purpose')}: invalid JSON from model: {e}") from e

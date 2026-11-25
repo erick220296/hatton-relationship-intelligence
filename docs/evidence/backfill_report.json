@@ -36,5 +36,17 @@
    "new": 50
   },
   "seconds": 2.6
+ },
+ "extract_estimate": {
+  "threads": 14818,
+  "est_input_tokens": 11128243,
+  "est_output_tokens": 1333620,
+  "model": "claude-haiku-5-5",
+  "est_cost_usd_batch": 0.89,
+  "est_cost_usd_sync": 1.78
+ },
+ "ner": {
+  "new_terms": 904,
+  "seconds": 102.0
  }
 }

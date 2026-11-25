@@ -148,3 +148,9 @@ GRANT CONNECT ON DATABASE hri TO hri_ro;
 GRANT USAGE ON SCHEMA public TO hri_ro;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO hri_ro;
 REVOKE SELECT ON pseudonym, egress_audit FROM hri_ro;   -- tools never see the vault
+
+-- Names/places found by NER at ingest time that the graph doesn't know; feeds the masking dictionary.
+CREATE TABLE IF NOT EXISTS ner_term (
+  term  TEXT PRIMARY KEY,
+  kind  TEXT NOT NULL            -- NAME | ADDRESS
+);
