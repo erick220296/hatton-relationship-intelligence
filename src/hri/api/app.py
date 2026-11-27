@@ -6,6 +6,7 @@ import json
 import logging
 import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException
@@ -67,16 +68,19 @@ def _store(res: dict) -> int | None:
     return r["id"]
 
 
-def _cached(meeting_id: str | None = None, person_id: int | None = None) -> dict | None:
-    if meeting_id:
-        r = db.q1("""SELECT * FROM brief WHERE meeting_id = %s AND mode = 'llm' ORDER BY created_at DESC LIMIT 1""",
-                  (meeting_id,))
-    elif person_id:
-        r = db.q1("""SELECT * FROM brief WHERE person_id = %s AND mode = 'llm' ORDER BY created_at DESC LIMIT 1""",
-                  (person_id,))
-    else:
+def _cached(meeting_id: str | None = None, person_id: int | None = None, any_mode: bool = False,
+            partner_email: str | None = None) -> dict | None:
+    """Latest stored brief. Normally only verified ('llm') briefs; with any_mode (the stale-cache path when
+    the data service is down) a facts-only brief also qualifies, preferring llm. Optionally per partner."""
+    if not (meeting_id or person_id):
         return None
-    return r
+    where, args = ["meeting_id = %s" if meeting_id else "person_id = %s"], [meeting_id or person_id]
+    where.append("mode IN ('llm', 'fallback')" if any_mode else "mode = 'llm'")
+    if partner_email:
+        where.append("partner_id = (SELECT id FROM person WHERE email = %s)")
+        args.append(partner_email)
+    return db.q1(f"""SELECT * FROM brief WHERE {' AND '.join(where)}
+                     ORDER BY (mode = 'llm') DESC, created_at DESC LIMIT 1""", args)
 
 
 @app.post("/brief")
@@ -99,10 +103,16 @@ async def brief(req: BriefRequest):
                 db.q, "SELECT id FROM person WHERE NOT is_partner AND (lower(name)=lower(%s) OR lower(email)=lower(%s))",
                 (req.query.strip(), req.query.strip()))
             pid = hits[0]["id"] if len(hits) == 1 else None
-        c = await asyncio.to_thread(_cached, meeting_id=req.meeting_id, person_id=pid)
+        c = await asyncio.to_thread(_cached, meeting_id=req.meeting_id, person_id=pid, any_mode=True,
+                                    partner_email=req.partner_email)
         if c:
-            res.update(brief=c["content"], mode="stale_cache", review=c["content"].get("review"))
-            res["warnings"].append(f"Showing the last good brief from {c['created_at']:%Y-%m-%d %H:%M}.")
+            age_h = (datetime.now(timezone.utc) - c["created_at"]).total_seconds() / 3600
+            age = f"{age_h * 60:.0f} min" if age_h < 1 else f"{age_h:.1f} h" if age_h < 48 else f"{age_h / 24:.0f} days"
+            kind = "verified brief" if c["mode"] == "llm" else "facts-only brief"
+            res.update(brief=c["content"], mode="stale_cache", review=c["content"].get("review"),
+                       brief_id=c["id"], stale_mode=c["mode"], person_id=c["person_id"])
+            res["warnings"].append(f"Showing the last good brief from {c['created_at']:%Y-%m-%d %H:%M} "
+                                   f"({age} old, {kind}): live relationship data is unavailable, so it may be out of date.")
     if res["mode"] in ("llm", "fallback"):
         res["brief_id"] = await asyncio.to_thread(_store, res)
     return res

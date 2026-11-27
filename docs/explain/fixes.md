@@ -273,3 +273,36 @@ appears in the tab after the next reload. Every fresh fallback brief is queued, 
 the list is long and repetitive (more than 100 right now). For a clean demo, approve or reject the old ones
 first, or ask for a "clear test briefs" step. There are no logins: the reviewer is the partner picked in
 the sidebar.
+
+---
+
+## F09: When the data service is down, show the last brief of any kind, clearly labelled
+
+**What was wrong.** The "kill a tool" demo stops the MCP data server. The API then tried to serve the last
+stored brief, but only *verified* (`llm`) briefs counted. Tonight there are none (no model key), so the
+partner got "no brief" (`mode: unavailable`).
+
+**What changed.** (`src/hri/api/app.py`)
+- `_cached(..., any_mode=True)` is used only on the stale path (data service down, or `delayed`). It accepts
+  a verified or a facts-only brief, prefers verified, and filters by partner when one is given. The normal
+  "prepared earlier" cache still serves verified briefs only.
+- The response is `mode: stale_cache` with the old brief, its `brief_id`, `stale_mode` and review flag, plus a
+  warning: "Showing the last good brief from 2026-11-27 15:50 (0 min old, facts-only brief): live
+  relationship data is unavailable, so it may be out of date."
+- Tests: `tests/test_stale_cache.py` (new, Docker/db-marked, data tools stubbed as down). The last fallback
+  brief is served with the label; a verified brief is preferred over a newer facts-only one; the normal cache
+  still ignores facts-only briefs. The tests delete the rows they create.
+
+**Course concept.** *Graceful degradation / resilience to tool failure*: when a tool dies mid-session, fall
+back to the last known-good answer, and say plainly how old it is and what kind it is.
+
+**How to see it working.** `make kill-llm`; brief jamie.tucker with `"fresh":true` (stores a facts-only
+brief); `make kill-mcp`;
+`curl -s -X POST localhost:8000/brief -H 'content-type: application/json' -d '{"query":"jamie.tucker@wrightco.example"}'`
+→ 200, `mode: stale_cache`, brief present, warning "Showing the last good brief from …". `make revive-mcp`
+→ normal again; `make revive-llm`.
+
+**What still breaks it / limits.** With the tools down, a name is resolved from our own `person` table
+(exact name or email only); an ambiguous or partial name gets no cached brief. If no brief was ever made for
+that person, there is nothing to show (mode stays `unavailable`). The cached brief can be days old; the
+warning says so, but the facts in it are not refreshed.
