@@ -13,6 +13,8 @@ st.set_page_config(page_title="Hatton Relationship Intelligence", layout="wide")
 
 def api(method, path, quiet=False, **kw):
     """quiet=True: optional data; on failure return None and let the caller show a calm note."""
+    if kw.get("params"):  # httpx sends None as "partner=" (empty string), which filters everything out
+        kw["params"] = {k: v for k, v in kw["params"].items() if v is not None}
     try:
         r = httpx.request(method, f"{API}{path}", timeout=60, **kw)
         r.raise_for_status()

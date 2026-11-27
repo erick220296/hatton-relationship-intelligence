@@ -1,20 +1,21 @@
 {
  "cooled_in_corpus": 60,
- "flagged_quiet": 98,
- "true_positives": 56,
- "false_positives": 17,
- "false_negatives": 4,
- "precision": 0.767,
- "recall": 0.933,
- "f1": 0.842,
+ "flagged_quiet": 93,
+ "true_positives": 55,
+ "false_positives": 13,
+ "false_negatives": 5,
+ "precision": 0.809,
+ "recall": 0.917,
+ "f1": 0.859,
  "dead_deals_flagged": "25/25",
  "confusion": {
-  "cooling -> quiet": 56,
+  "cooling -> cooling": 1,
+  "cooling -> quiet": 55,
   "cooling -> warm": 4,
   "deal_died -> quiet": 25,
   "dormant -> cold": 217,
   "dormant -> cooling": 25,
-  "dormant -> new": 5,
+  "dormant -> new": 8,
   "dormant -> quiet": 7,
   "dormant -> warm": 2,
   "one_off -> cold": 324,
@@ -23,16 +24,16 @@
   "one_off -> quiet": 2,
   "one_off -> warm": 10,
   "unknown -> cold": 873,
-  "unknown -> new": 35,
+  "unknown -> new": 86,
   "warm_steady -> cold": 7,
-  "warm_steady -> cooling": 81,
-  "warm_steady -> quiet": 7,
-  "warm_steady -> warm": 457,
-  "warming -> cold": 11,
-  "warming -> cooling": 14,
-  "warming -> new": 5,
+  "warm_steady -> cooling": 54,
+  "warm_steady -> quiet": 3,
+  "warm_steady -> warm": 488,
+  "warming -> cold": 6,
+  "warming -> cooling": 10,
+  "warming -> new": 15,
   "warming -> quiet": 1,
-  "warming -> warm": 92
+  "warming -> warm": 101
  },
  "missed": [
   {
@@ -40,6 +41,12 @@
    "person": "adam.tucker@patelllp.example",
    "status_given": "warm",
    "change_point": "2026-08-08T23:03:35.431425+00:00"
+  },
+  {
+   "partner": "joanne.parry@hattoncap.example",
+   "person": "josephine.skinner@akhtar.example",
+   "status_given": "cooling",
+   "change_point": "2026-03-17T07:44:02.889606+00:00"
   },
   {
    "partner": "melissa.grant@hattoncap.example",
@@ -68,11 +75,6 @@
   },
   {
    "partner": "brandon.wells@hattoncap.example",
-   "person": "brett.hunt@priceinc.example",
-   "trajectory": "warm_steady"
-  },
-  {
-   "partner": "brandon.wells@hattoncap.example",
    "person": "denis.williams@lowe.example",
    "trajectory": "dormant"
   },
@@ -88,17 +90,7 @@
   },
   {
    "partner": "eileen.whitehead@hattoncap.example",
-   "person": "francis.dickinson@hallcapitaladvisor.example",
-   "trajectory": "warm_steady"
-  },
-  {
-   "partner": "eileen.whitehead@hattoncap.example",
    "person": "grace.leonard@smithlegal.example",
-   "trajectory": "warm_steady"
-  },
-  {
-   "partner": "eileen.whitehead@hattoncap.example",
-   "person": "natalie.lynch@inbox.example",
    "trajectory": "warm_steady"
   },
   {
@@ -118,11 +110,6 @@
   },
   {
    "partner": "melissa.grant@hattoncap.example",
-   "person": "julie.hyde@hughespartnersllp.example",
-   "trajectory": "warm_steady"
-  },
-  {
-   "partner": "melissa.grant@hattoncap.example",
    "person": "leah.payne@wheelersecurities.example",
    "trajectory": "dormant"
   },
@@ -135,6 +122,16 @@
    "partner": "melissa.grant@hattoncap.example",
    "person": "yvonne.may@whitepartnersllp.example",
    "trajectory": "warm_steady"
+  },
+  {
+   "partner": "russell.hughes@hattoncap.example",
+   "person": "carl.hughes@clarkesecurities.example",
+   "trajectory": "dormant"
+  },
+  {
+   "partner": "sally.fletcher@hattoncap.example",
+   "person": "linda.hall@inbox.example",
+   "trajectory": "dormant"
   }
  ]
 }
