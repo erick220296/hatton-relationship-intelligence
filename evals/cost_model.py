@@ -61,6 +61,12 @@ def main():
     per_brief = statistics.mean(brief_costs) if brief_costs else None
     p95_brief = sorted(brief_costs)[int(0.95 * (len(brief_costs) - 1))] if brief_costs else None
     ex = measured_ongoing_extraction_per_thread()
+    if not ex.get("n") and bf.get("cost_usd") and bf.get("threads"):
+        # No live (sync) extraction calls logged yet: derive the per-thread cost from the measured Batch
+        # backfill and remove the Batch discount, because ongoing extraction runs unbatched.
+        ex = {"n": 0, "usd": bf["cost_usd"] / bf["threads"] / prices()["batch_discount"],
+              "basis": f"derived from the measured backfill (${bf['cost_usd']} / {bf['threads']:,} threads) "
+                       f"at full (non-batch) price"}
 
     vol = a["volume"]
     infra = a["infrastructure"]
@@ -111,7 +117,8 @@ def main():
         "", "## 2. Running cost per unit (measured)",
         f"- **One pre-meeting brief:** mean **${per_brief:.4f}**, p95 ${p95_brief:.4f} (n={len(brief_costs)} measured briefs: generate + verify)"
         if per_brief else "- One pre-meeting brief: _run `make eval` / `make load` first_",
-        f"- Ongoing extraction per new thread (sync, unbatched): ${ex.get('usd', 0):.5f} (n={ex.get('n')} calls)",
+        f"- Ongoing extraction per new thread (sync, unbatched): ${ex.get('usd', 0):.5f} "
+        + (f"({ex['basis']})" if ex.get("basis") else f"(n={ex.get('n')} measured calls)"),
         f"- Masking: in-process, $0 marginal; observability (Langfuse) in infrastructure",
         "", "## 3. Monthly cost", "| | Normal | Peak |", "|---|---|---|",
         f"| Briefs/month | {normal['briefs']:.0f} | {peak['briefs']:.0f} |",
@@ -129,7 +136,27 @@ def main():
         f"- It stops being cheaper only below that volume; on the variable side a brief costs "
         f"${per_brief or 0:.4f} vs ${value_per_brief:.2f} of partner time, so it never stops being cheaper as volume rises.",
         f"- Budget ceiling: at current unit cost the $900/month budget supports ~{headroom_briefs_per_day:,.0f} briefs/day.",
-        "", "## 5. Sensitivity", "| Change | Effect on normal monthly total |", "|---|---|",
+        "", "## 5. Price, margin and coverage of measured cost",
+        "All-in monthly fee to Hatton (backfill billed once, separately, at cost plus setup).",
+        "| Price / month | Margin at normal cost | Margin at peak cost | Price per brief at normal volume | Covers measured cost? | Hatton break-even (first-meeting preps replaced / month) |",
+        "|---|---|---|---|---|---|",
+    ] + [
+        f"| ${p:,} | ${p - normal['total']:,.2f} ({(p - normal['total']) / p:.0%}) | "
+        f"${p - peak['total']:,.2f} ({(p - peak['total']) / p:.0%}) | ${p / normal['briefs']:.2f} vs "
+        f"${allin_normal:.2f} all-in cost | {'yes' if p > peak['total'] else 'NO'} | {p / value_per_brief:.1f} |"
+        for p in a.get("pricing", {}).get("price_points_usd_per_month", [])
+    ] + [
+        "",
+        f"Hatton break-even = monthly fee ÷ ${value_per_brief:.2f} of partner time per first-meeting prep. "
+        "Only first meetings are counted (the client's 30–45 min figure is for first meetings), so this is conservative: "
+        "below that many first meetings a month, the fee costs Hatton more than the partner time it saves.",
+        f"Measured per-brief cost comes from n={len(brief_costs)} briefs; re-run `make eval` and `make load` "
+        "to refresh it from Langfuse-traced runs.",
+        "", "## 6. Sensitivity", "| Change | Effect on normal monthly total |", "|---|---|",
+        f"| Stress volume: {vol.get('briefs_per_day_stress', 45)} briefs/day (3× peak, load-test level) | "
+        f"total ${month(vol.get('briefs_per_day_stress', 45), vol['messages_per_day_peak'])['total']:.2f}/month |",
+        f"| Partner time valued at $400/h instead of ${partner_hr}/h | value per brief "
+        f"${400 * minutes_saved / 60:.2f}; break-even {infra_month / max(1e-9, 400 * minutes_saved / 60 - (per_brief or 0)):.1f} briefs/month |",
         f"| Brief model → Opus 5.5 (2× Sonnet price) | +${normal['llm_briefs']:.2f} |",
         f"| No Batch API for backfill | +${bf.get('cost_usd', 0):.2f} one-off |",
         f"| OpenAI embeddings instead of local (~{vol['messages_per_day_normal']}/day × ~400 tokens) | "

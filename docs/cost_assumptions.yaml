@@ -1,29 +1,33 @@
 # Commercial Lead (Yasiru) owns this file. Every price needs a source URL and the date you looked it up.
-# Items marked TODO are placeholders - replace them before the pitch.
+# Where a price could not be confirmed for the exact region, it says so and states the assumption used.
 client_budget_usd_per_month: 900
 
 volume:                       # from the client brief §4
-  briefs_per_day_normal: 12.5     # "10-15 per day"
-  briefs_per_day_peak: 45         # 3x the morning burst; our load-test peak
-  messages_per_day_normal: 400
-  messages_per_day_peak: 800      # TODO confirm with client (Q9)
+  briefs_per_day_normal: 12.5     # "10-15 per day" -> midpoint
+  briefs_per_day_peak: 15         # top of the client's stated range
+  briefs_per_day_stress: 45       # 3x the peak: what the load test simulates (sensitivity row only)
+  messages_per_day_normal: 400    # client brief §4
+  messages_per_day_peak: 800      # ASSUMPTION: 2x normal (not stated by the client)
   threads_per_message: 0.4        # measured on corpus: 14,818 external threads / ~38k messages
 
 infrastructure:
-  vm_in_region:                   # 4 vCPU / 16 GB, UK/EU region: Postgres + MCP + API + UI + embeddings
-    usd_per_month: 140
-    source: "TODO Commercial Lead: e.g. AWS EC2 m7i.xlarge eu-west-2 on-demand, https://aws.amazon.com/ec2/pricing/on-demand/"
-    looked_up: "TODO"
-  storage_and_backups:            # 100 GB SSD + daily snapshots
+  vm_in_region:                   # 1x m7i.xlarge (4 vCPU / 16 GiB), London: Postgres + MCP + API + UI + local embeddings
+    usd_per_month: 170.16         # $0.2331/h x 730 h
+    source: "AWS on-demand Linux price for m7i.xlarge in EU (London), from AWS's public price feed behind https://aws.amazon.com/ec2/pricing/on-demand/ (us-east-1: $0.2016/h)"
+    looked_up: "2026-11-27"
+  storage_and_backups:            # 100 GB gp3 SSD + 100 GB of snapshots
     usd_per_month: 15
-    source: "TODO Commercial Lead: provider block-storage + snapshot pricing page"
-    looked_up: "TODO"
-  langfuse:                       # observability (masked payloads only)
+    source: "ASSUMPTION: https://aws.amazon.com/ebs/pricing/ worked examples use gp3 $0.08/GB-month and snapshots $0.05/GB-month, region not named (100x0.08 + 100x0.05 = $13); rounded up to $15 for London. Exact London rate not confirmed."
+    looked_up: "2026-11-27"
+  langfuse:                       # observability (masked payloads only), Langfuse Cloud Core: 100k units/month, 90-day access
     usd_per_month: 29
-    source: "TODO Commercial Lead: https://langfuse.com/pricing (Core plan) - or $0 if self-hosted / Hobby tier"
-    looked_up: "TODO"
+    source: "https://langfuse.com/pricing (Core $29/month; Hobby is free with 50k units/month and 30-day access)"
+    looked_up: "2026-11-27"
+
+pricing:                          # what we would charge Hatton per month, all-in (all within the client's $900 budget)
+  price_points_usd_per_month: [500, 700, 900]
 
 partner_time:
-  usd_per_hour: 400               # TODO: ask client (Q8); placeholder for a mid-market PE partner, fully loaded
-  minutes_saved_per_brief: 37.5   # client brief: 30-45 minutes of inbox searching per meeting
+  usd_per_hour: 300               # ASSUMPTION (conservative) pending client answer; $400 shown as sensitivity
+  minutes_saved_per_brief: 37.5   # client brief §2: 30-45 minutes of inbox searching per meeting -> midpoint
   source: "client brief §2 (minutes); hourly value is an ASSUMPTION pending client answer"
