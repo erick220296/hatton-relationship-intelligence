@@ -1,5 +1,6 @@
 # Cost model: Hatton Relationship Intelligence
 _Generated 2026-11-27 by `python -m evals.cost_model` from measured evidence. Owner: Commercial Lead._
+Inputs: `docs/evidence/backfill_report.json` (measured backfill), `docs/evidence/brief_eval.json` + `docs/evidence/load_c*.json` (measured per-brief cost), `egress_audit` table (ongoing extraction), `src/hri/config/prices.yaml` (model prices), `docs/cost_assumptions.yaml` (volumes, infrastructure, partner time).
 
 ## Unit prices (source and date)
 - Extraction model `claude-haiku-5-5`: $0.1/$0.5 per MTok in/out · https://platform.claude.com/docs/en/about-claude/pricing · looked up 2026-11-27; Batch API discount ×0.5
@@ -19,7 +20,7 @@ _Generated 2026-11-27 by `python -m evals.cost_model` from measured evidence. Ow
 | Embedding 40k messages (local) | – | – | $0.00 API |
 
 ## 2. Running cost per unit (measured)
-- **One pre-meeting brief:** mean **$0.0173**, p95 $0.0218 (n=19 measured briefs: generate + verify)
+- **One pre-meeting brief:** mean **$0.0173**, p95 $0.0218 (n=19 measured briefs: generate + verify; measured in the 25 Nov eval run on the code *before* the 27 Nov fixes, `docs/evidence/brief_eval.json`)
 - Ongoing extraction per new thread (sync, unbatched): $0.00015 (derived from the measured backfill ($1.0785 / 14,818 threads) at full (non-batch) price)
 - Masking: in-process, $0 marginal; observability (Langfuse) in infrastructure
 

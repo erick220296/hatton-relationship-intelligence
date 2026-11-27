@@ -99,6 +99,9 @@ def main():
     lines = [
         "# Cost model: Hatton Relationship Intelligence",
         f"_Generated {date.today()} by `python -m evals.cost_model` from measured evidence. Owner: Commercial Lead._",
+        "Inputs: `docs/evidence/backfill_report.json` (measured backfill), `docs/evidence/brief_eval.json` + "
+        "`docs/evidence/load_c*.json` (measured per-brief cost), `egress_audit` table (ongoing extraction), "
+        "`src/hri/config/prices.yaml` (model prices), `docs/cost_assumptions.yaml` (volumes, infrastructure, partner time).",
         "", "## Unit prices (source and date)",
         f"- Extraction model `{settings().extract_model}`: {src(settings().extract_model)}; Batch API discount ×{prices()['batch_discount']}",
         f"- Brief model `{settings().brief_model}`: {src(settings().brief_model)}",
@@ -115,7 +118,8 @@ def main():
         f"{bf.get('tokens_in', 0):,} | {bf.get('tokens_out', 0):,} | **${bf.get('cost_usd', '?')}** |",
         "| Embedding 40k messages (local) | – | – | $0.00 API |",
         "", "## 2. Running cost per unit (measured)",
-        f"- **One pre-meeting brief:** mean **${per_brief:.4f}**, p95 ${p95_brief:.4f} (n={len(brief_costs)} measured briefs: generate + verify)"
+        f"- **One pre-meeting brief:** mean **${per_brief:.4f}**, p95 ${p95_brief:.4f} (n={len(brief_costs)} measured briefs: generate + verify; "
+        f"measured in the 25 Nov eval run on the code *before* the 27 Nov fixes, `docs/evidence/brief_eval.json`)"
         if per_brief else "- One pre-meeting brief: _run `make eval` / `make load` first_",
         f"- Ongoing extraction per new thread (sync, unbatched): ${ex.get('usd', 0):.5f} "
         + (f"({ex['basis']})" if ex.get("basis") else f"(n={ex.get('n')} measured calls)"),

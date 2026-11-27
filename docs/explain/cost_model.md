@@ -39,7 +39,8 @@ The course rule: "Your pricing must cover your measured cost per interaction at 
 2. **Storage price for London is an assumption** ($15). AWS's page only shows example rates. It's 7% of the bill, so it can't change the conclusion.
 3. **Per-brief cost is from 19 briefs**, from Eric's run on 25 Nov, before tonight's fixes. It should be refreshed from Langfuse traces after the eval and load test re-run (needs the model key).
 4. **Peak mail volume (800/day) is assumed** as 2× normal.
-5. **Production residency:** if Hatton needs the AI calls pinned to a region, Anthropic charges 1.1× (`inference_geo`). That adds about $0.70/month. Negligible.
+5. **Production residency:** if Hatton needs the AI calls pinned to a region, Anthropic charges 1.1× for `inference_geo: "us"` (https://platform.claude.com/docs/en/about-claude/pricing, looked up 27 Nov 2026). That adds about $0.70/month. Negligible.
+6. **"Data stays in region" means the raw data.** Masked text (names replaced by placeholders) does go to Anthropic's API. Say it exactly that way; the panel will test the wording.
 
 ## Likely panel questions
 - *"Why is the server the biggest cost?"* Because everything runs on one in-region machine (database, tools, API, UI, embeddings), which keeps the data in region. The AI is pay-per-use and tiny.
