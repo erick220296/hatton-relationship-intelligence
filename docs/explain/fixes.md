@@ -525,3 +525,19 @@ api once, `make kill-mcp`, brief someone whose last brief is old).
 **What still breaks it / limits.** The normal "prepared earlier" cache (meeting briefs, not fresh) serves only
 verified `llm` briefs and does not add this flag; there are no pre-F05 `llm` briefs in the local database, but a
 database with some would need the same rule there.
+
+---
+
+## B3: `make clear-test-briefs` covers load-test briefs too
+
+**What was asked.** Make sure the demo-prep step decides *every* queued brief, including the ones load tests
+created, through the review log (no deletes).
+
+**What changed.** It already did (load-test briefs are stored and queued like any other; the dry run counted
+132, the same as the database). To make that guaranteed rather than incidental,
+`src/hri/ops/clear_test_briefs.py` now takes the list straight from the `brief` table
+(`status = 'needs_review'`) instead of the queue view, so no join or page limit can hide one. New test
+(`tests/test_clear_test_briefs.py`, Docker): a brief created through the API with the load-test header is in the
+clear set and is rejected via `review_log`.
+
+**How to use.** `make clear-test-briefs-dry`, then `make clear-test-briefs` just before the pitch (not run yet).

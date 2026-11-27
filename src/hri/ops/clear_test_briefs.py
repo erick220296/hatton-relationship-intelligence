@@ -15,9 +15,16 @@ from fastapi import HTTPException
 NOTE = "test run, cleared before demo"
 
 
+def queued_ids() -> list[int]:
+    """Every brief waiting for review, whatever produced it (UI, API, precompute, load test), straight from
+    the brief table, so nothing is missed by the queue view's joins or limit."""
+    from hri import db
+    return [r["id"] for r in db.q("SELECT id FROM brief WHERE status = 'needs_review' ORDER BY id")]
+
+
 def clear(brief_ids: list[int] | None = None, dry_run: bool = False) -> dict:
-    from hri.api.app import ReviewDecision, review_decide, review_queue
-    ids = brief_ids if brief_ids is not None else [r["brief_id"] for r in review_queue(limit=100_000)]
+    from hri.api.app import ReviewDecision, review_decide
+    ids = brief_ids if brief_ids is not None else queued_ids()
     done, skipped = 0, 0
     if not dry_run:
         for bid in ids:
