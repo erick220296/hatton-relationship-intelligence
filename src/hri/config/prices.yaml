@@ -5,17 +5,17 @@ models:
     input_per_mtok: 0.10
     output_per_mtok: 0.50
     source: https://platform.claude.com/docs/en/about-claude/pricing
-    looked_up: "2026-11-03"   # Anthropic model table (prompts <=100K tokens)
+    looked_up: "2026-11-27"   # re-verified: Haiku 5.5 $0.10/$0.50 for prompts <=100K tokens
   claude-sonnet-5-5:
     input_per_mtok: 2.00
     output_per_mtok: 10.00
     source: https://platform.claude.com/docs/en/about-claude/pricing
-    looked_up: "2026-11-03"
+    looked_up: "2026-11-27"
   claude-opus-5-5:
     input_per_mtok: 4.00
     output_per_mtok: 20.00
     source: https://platform.claude.com/docs/en/about-claude/pricing
-    looked_up: "2026-11-03"
+    looked_up: "2026-11-27"
 batch_discount: 0.5          # Message Batches API: 50% of standard price (same source)
 embeddings:
   local_bge_small:
@@ -23,5 +23,5 @@ embeddings:
     source: self-hosted fastembed BAAI/bge-small-en-v1.5
   openai_text_embedding_3_small:   # rejected alternative, priced for the ADR
     per_mtok: 0.02
-    source: https://openai.com/api/pricing  # TODO Commercial Lead: verify and date
-    looked_up: "TODO"
+    source: https://openai.com/api/pricing  # rejected alternative; price not re-verified (sensitivity row only)
+    looked_up: "not verified"

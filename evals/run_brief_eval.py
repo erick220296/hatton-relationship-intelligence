@@ -29,6 +29,7 @@ from hri.privacy.masker import masker
 GT = Path("data/corpus/ground_truth.json")
 OUT = Path("docs/evidence")
 SLA_MS = 30_000
+BEFORE_FIXES = "docs/evidence/brief_eval_2026-11-25.json"   # baseline run on the code before the 27 Nov fixes
 
 JUDGE_SYSTEM = """You audit claims in a pre-meeting brief. For each claim you get the raw source text it cites.
 Answer supported=false if the claim contains ANY detail (date, owner, amount, commitment, topic) that the
@@ -120,7 +121,8 @@ def judge(brief: dict) -> dict:
         "\n".join(f"  [{x}] {mk.mask(profile if x == 'PROFILE' else bodies.get(x, '(not found)'))}" for x in c["cites"])
         for i, (sec, c) in enumerate(claims))
     mk.flush()
-    out, res = complete_json(model=settings().brief_model, system=JUDGE_SYSTEM, user=listing, purpose="eval_judge",
+    # independent judge: a different (stronger) model than the writer (brief_model) and the verifier
+    out, res = complete_json(model=settings().eval_judge_model, system=JUDGE_SYSTEM, user=listing, purpose="eval_judge",
                              max_tokens=3000, json_schema=JUDGE_SCHEMA, effort="medium")
     bad = [{"claim": claims[v["i"]][1]["text"], "reason": v["reason"]} for v in out["verdicts"]
            if not v["supported"] and v["i"] < len(claims)]
@@ -215,6 +217,9 @@ def main():
     fr = [r["fact_recall"] for r in results if r["fact_recall"]]
     summary = {
         "run_at": datetime.now(timezone.utc).isoformat(), "cases": len(results),
+        "judge_model": None if a.no_judge else settings().eval_judge_model,
+        "writer_model": settings().brief_model, "verifier_model": settings().verify_model,
+        "before_fixes_run": BEFORE_FIXES,
         "passed": sum(r["pass"] for r in results),
         "pass_rate": round(sum(r["pass"] for r in results) / max(1, len(results)), 3),
         "by_kind": {k: f"{sum(r['pass'] for r in results if r['kind'] == k)}/{sum(r['kind'] == k for r in results)}"
@@ -228,7 +233,9 @@ def main():
     }
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "brief_eval.json").write_text(json.dumps({"summary": summary, "results": results}, indent=1, default=str))
-    md = ["# Brief evaluation", "", "```json", json.dumps(summary, indent=1), "```", "",
+    md = ["# Brief evaluation", "",
+          f"Before-fixes run (25 Nov, code before the 27 Nov fixes, judged by the writer model): `{BEFORE_FIXES}` "
+          "(table: `docs/evidence/brief_eval_2026-11-25.md`).", "", "```json", json.dumps(summary, indent=1), "```", "",
           "| case | kind | pass | mode | latency ms | claims | unsupported | dropped by verifier | failures |",
           "|---|---|---|---|---|---|---|---|---|"]
     for r in results:

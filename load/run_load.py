@@ -29,7 +29,9 @@ async def main_async(concurrency: int, n: int):
     sem = asyncio.Semaphore(concurrency)
     results = []
 
-    async with httpx.AsyncClient(base_url=settings().api_url, timeout=120) as http:
+    # the header tags these briefs "load-test" in Langfuse, so the latency chart can filter them
+    async with httpx.AsyncClient(base_url=settings().api_url, timeout=120,
+                                 headers={"X-HRI-Run-Type": "load-test"}) as http:
         async def one(t):
             async with sem:
                 t0 = time.perf_counter()

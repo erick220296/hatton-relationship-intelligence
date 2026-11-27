@@ -38,34 +38,34 @@
   "seconds": 2.6
  },
  "extract_estimate": {
-  "threads": 14818,
-  "est_input_tokens": 11128243,
-  "est_output_tokens": 1333620,
+  "threads": 15618,
+  "est_input_tokens": 14390678,
+  "est_output_tokens": 1653009,
   "model": "claude-haiku-5-5",
-  "est_cost_usd_batch": 0.89,
-  "est_cost_usd_sync": 1.78
+  "est_cost_usd_batch": 1.13,
+  "est_cost_usd_sync": 2.27
  },
  "ner": {
   "new_terms": 904,
   "seconds": 102.0
  },
  "extract_actual": {
-  "threads": 14818,
+  "threads": 15618,
   "batches": [
-   "msgbatch_01RjiTYHgzfkrFHwLT3wL3bj",
-   "msgbatch_01HJ9aX5vhosQ4fPC345nviQ",
-   "msgbatch_016dG9Caw4XXcDmBBQQfQiAk",
-   "msgbatch_01X8DpCToAWLqVFXcfk6iUhC",
-   "msgbatch_01U7qfzHneurnr1fAC7NRYuY",
-   "msgbatch_01PM3mWnB84DbEQUFgQ9hzpt",
-   "msgbatch_01VcccGKgs6R2RnmBxEhPUTQ",
-   "msgbatch_012M8c8p8BFQvrbPn9zA4esS"
+   "msgbatch_01W4gEx4EwWBSN4QNFjGGKBG",
+   "msgbatch_01464B6iuh8u848917qhvTKu",
+   "msgbatch_01SvP82mZxgi6mv6qmwfyCXm",
+   "msgbatch_0118nh8eKQqv5ZBw2QtgWjLL",
+   "msgbatch_01Pp1tLn1Bo26dHjxZvH4uAN",
+   "msgbatch_01Y4bnoNhr1DmBc6b6iNvtqb",
+   "msgbatch_01V9jz13bRFHvic61GfgUYJV",
+   "msgbatch_013gxfanJ86m33WyWZjNNe72"
   ],
-  "tokens_in": 13730944,
-  "tokens_out": 1567705,
-  "succeeded": 14818,
+  "tokens_in": 14338291,
+  "tokens_out": 1498762,
+  "succeeded": 15618,
   "errored": 0,
-  "wall_minutes": 8.5,
-  "cost_usd": 1.0785
+  "wall_minutes": 5.6,
+  "cost_usd": 1.0916
  }
 }

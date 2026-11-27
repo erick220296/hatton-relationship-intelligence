@@ -6,8 +6,10 @@ import json
 import logging
 import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+from typing import Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
 
 from hri import clock, db
@@ -56,52 +58,98 @@ def _store(res: dict) -> int | None:
     if not res.get("brief") or not res.get("person_id"):
         return None
     pid = db.q1("SELECT id FROM person WHERE email = %s", (res.get("partner_email"),)) if res.get("partner_email") else None
-    r = db.q1("""INSERT INTO brief (person_id, partner_id, meeting_id, mode, content, latency_ms, cost_usd, trace_id)
-                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+    review = res.get("review") or {}
+    r = db.q1("""INSERT INTO brief (person_id, partner_id, meeting_id, mode, content, latency_ms, cost_usd, trace_id,
+                                    status, review_reasons)
+                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
               (res["person_id"], pid["id"] if pid else None, res.get("meeting_id"), res["mode"],
-               json.dumps(res["brief"], default=str), res["latency_ms"], res["cost_usd"], res.get("trace_id")))
+               json.dumps(res["brief"], default=str), res["latency_ms"], res["cost_usd"], res.get("trace_id"),
+               "needs_review" if review.get("needed") else "ok", json.dumps(review.get("reasons") or [])))
     return r["id"]
 
 
-def _cached(meeting_id: str | None = None, person_id: int | None = None) -> dict | None:
-    if meeting_id:
-        r = db.q1("""SELECT * FROM brief WHERE meeting_id = %s AND mode = 'llm' ORDER BY created_at DESC LIMIT 1""",
-                  (meeting_id,))
-    elif person_id:
-        r = db.q1("""SELECT * FROM brief WHERE person_id = %s AND mode = 'llm' ORDER BY created_at DESC LIMIT 1""",
-                  (person_id,))
-    else:
+def _cached(meeting_id: str | None = None, person_id: int | None = None, any_mode: bool = False,
+            partner_email: str | None = None) -> dict | None:
+    """Latest stored brief. Normally only verified ('llm') briefs; with any_mode (the stale-cache path when
+    the data service is down) a facts-only brief also qualifies, preferring llm. Optionally per partner."""
+    if not (meeting_id or person_id):
         return None
-    return r
+    where, args = ["meeting_id = %s" if meeting_id else "person_id = %s"], [meeting_id or person_id]
+    where.append("mode IN ('llm', 'fallback')" if any_mode else "mode = 'llm'")
+    if partner_email:
+        where.append("partner_id = (SELECT id FROM person WHERE email = %s)")
+        args.append(partner_email)
+    return db.q1(f"""SELECT * FROM brief WHERE {' AND '.join(where)}
+                     ORDER BY (mode = 'llm') DESC, created_at DESC LIMIT 1""", args)
 
 
 @app.post("/brief")
-async def brief(req: BriefRequest):
+async def brief(req: BriefRequest, x_hri_run_type: str | None = Header(default=None)):
     if req.meeting_id and not req.fresh:
-        c = _cached(meeting_id=req.meeting_id)
+        c = await asyncio.to_thread(_cached, meeting_id=req.meeting_id)
         if c:
             return {"mode": "cached", "brief": c["content"], "warnings": [f"Prepared at {c['created_at']:%H:%M}"],
-                    "latency_ms": 0, "cost_usd": 0, "brief_id": c["id"], "person_id": c["person_id"]}
+                    "latency_ms": 0, "cost_usd": 0, "brief_id": c["id"], "person_id": c["person_id"],
+                    "review": c["content"].get("review")}
     run_id = str(uuid.uuid4())
-    try:
-        res = await run_brief(req.model_dump(exclude={"fresh"}), run_id, _checkpointer)
-    except asyncio.TimeoutError:
-        raise HTTPException(504, "Brief timed out")
-    res["run_id"] = run_id
-    res["trace_id"] = tracing.current_trace_id()
-    if res["mode"] == "unavailable":
+    # run_brief never raises on the deadline: it degrades to facts-only (or 'delayed') inside the budget
+    tags = ["load-test"] if x_hri_run_type == "load-test" else []   # set by load/run_load.py
+    res = await run_brief(req.model_dump(exclude={"fresh"}), run_id, _checkpointer, tags=tags)
+    res["run_id"] = run_id   # res["trace_id"] is captured inside run_brief, where the trace is current
+    if res["mode"] in ("unavailable", "delayed"):
         pid = req.person_id
         if not pid and req.query:   # tools are down: resolve the name from our own store instead
-            hits = db.q("SELECT id FROM person WHERE NOT is_partner AND (lower(name)=lower(%s) OR lower(email)=lower(%s))",
-                        (req.query.strip(), req.query.strip()))
+            hits = await asyncio.to_thread(
+                db.q, "SELECT id FROM person WHERE NOT is_partner AND (lower(name)=lower(%s) OR lower(email)=lower(%s))",
+                (req.query.strip(), req.query.strip()))
             pid = hits[0]["id"] if len(hits) == 1 else None
-        c = _cached(meeting_id=req.meeting_id, person_id=pid)
+        c = await asyncio.to_thread(_cached, meeting_id=req.meeting_id, person_id=pid, any_mode=True,
+                                    partner_email=req.partner_email)
         if c:
-            res.update(brief=c["content"], mode="stale_cache")
-            res["warnings"].append(f"Showing the last good brief from {c['created_at']:%Y-%m-%d %H:%M}.")
+            age_h = (datetime.now(timezone.utc) - c["created_at"]).total_seconds() / 3600
+            age = f"{age_h * 60:.0f} min" if age_h < 1 else f"{age_h:.1f} h" if age_h < 48 else f"{age_h / 24:.0f} days"
+            kind = "verified brief" if c["mode"] == "llm" else "facts-only brief"
+            review = c["content"].get("review") or {   # stored before F05 added review flags
+                "needed": True, "reasons": ["brief predates fact-check fix"]}
+            res.update(brief=c["content"], mode="stale_cache", review=review,
+                       brief_id=c["id"], stale_mode=c["mode"], person_id=c["person_id"])
+            res["warnings"].append(f"Showing the last good brief from {c['created_at']:%Y-%m-%d %H:%M} "
+                                   f"({age} old, {kind}): live relationship data is unavailable, so it may be out of date.")
     if res["mode"] in ("llm", "fallback"):
-        res["brief_id"] = _store(res)
+        res["brief_id"] = await asyncio.to_thread(_store, res)
     return res
+
+
+# ---------------------------------------------------------------- human review queue (F07)
+# Decisions are written only to our own database (brief.status + review_log). Nothing is sent anywhere.
+class ReviewDecision(BaseModel):
+    decision: Literal["approve", "reject"]
+    note: str | None = None
+    reviewer: str | None = None
+
+
+@app.get("/review")
+def review_queue(limit: int = 50):
+    """Briefs flagged for a partner to check, newest first, with the reasons."""
+    return db.q("""SELECT b.id AS brief_id, b.created_at, b.mode, b.status, b.review_reasons AS reasons,
+                          b.meeting_id, p.name AS person, p.email AS person_email, pa.email AS partner_email
+                   FROM brief b JOIN person p ON p.id = b.person_id LEFT JOIN person pa ON pa.id = b.partner_id
+                   WHERE b.status = 'needs_review' ORDER BY b.created_at DESC, b.id DESC LIMIT %s""", (limit,))
+
+
+@app.post("/review/{brief_id}")
+def review_decide(brief_id: int, d: ReviewDecision):
+    status = "reviewed" if d.decision == "approve" else "rejected"
+    with db.conn() as c, c.transaction():
+        row = c.execute("UPDATE brief SET status = %s WHERE id = %s AND status = 'needs_review' RETURNING id",
+                        (status, brief_id)).fetchone()
+        if not row:
+            exists = c.execute("SELECT status FROM brief WHERE id = %s", (brief_id,)).fetchone()
+            raise HTTPException(404 if not exists else 409,
+                                "No such brief" if not exists else f"Brief already {exists['status']}")
+        log = c.execute("""INSERT INTO review_log (brief_id, decision, note, reviewer) VALUES (%s,%s,%s,%s)
+                           RETURNING id, at""", (brief_id, d.decision, d.note, d.reviewer or "partner")).fetchone()
+    return {"brief_id": brief_id, "status": status, "review_log_id": log["id"], "at": log["at"]}
 
 
 @app.get("/quiet")
@@ -157,7 +205,8 @@ async def precompute(days: int = 1, concurrency: int = 4):
 
     async def one(m):
         async with sem:
-            return await brief(BriefRequest(meeting_id=m["id"], partner_email=m["partner_email"], fresh=True))
+            return await brief(BriefRequest(meeting_id=m["id"], partner_email=m["partner_email"], fresh=True),
+                               x_hri_run_type=None)
     results = await asyncio.gather(*(one(m) for m in todo), return_exceptions=True)
     ok = [r for r in results if isinstance(r, dict) and r.get("mode") == "llm"]
     return {"meetings": len(todo), "llm": len(ok), "other": len(results) - len(ok),

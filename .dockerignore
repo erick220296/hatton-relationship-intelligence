@@ -1,0 +1,15 @@
+# F03: keep secrets, local data and build junk out of image layers.
+# .env reaches containers at run time via compose `env_file`, never baked into the image.
+.env
+.env.*
+!.env.example
+.venv/
+data/
+.git/
+.gitignore
+.pytest_cache/
+**/__pycache__/
+**/*.pyc
+*.egg-info/
+**/*.egg-info/
+.DS_Store

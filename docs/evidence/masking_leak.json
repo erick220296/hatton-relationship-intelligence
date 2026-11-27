@@ -1,0 +1,186 @@
+{
+ "what": "exact model payloads (generate + verify) rebuilt for real contacts, model call replaced by a recorder",
+ "contacts": 24,
+ "payloads": 48,
+ "identifiers_checked": {
+  "person_names_and_emails": 2840,
+  "org_names": 385
+ },
+ "leaks": 0,
+ "f12_assert_masked_blocked": 0,
+ "negative_control": {
+  "masking": "off",
+  "contacts": 5,
+  "leaks": 355
+ },
+ "per_contact": [
+  {
+   "label": "warm",
+   "payloads": 2,
+   "chars": 13651,
+   "leaks": 0,
+   "placeholders": 32
+  },
+  {
+   "label": "warm",
+   "payloads": 2,
+   "chars": 14633,
+   "leaks": 0,
+   "placeholders": 31
+  },
+  {
+   "label": "warm",
+   "payloads": 2,
+   "chars": 13846,
+   "leaks": 0,
+   "placeholders": 27
+  },
+  {
+   "label": "warm",
+   "payloads": 2,
+   "chars": 14038,
+   "leaks": 0,
+   "placeholders": 30
+  },
+  {
+   "label": "warm",
+   "payloads": 2,
+   "chars": 14204,
+   "leaks": 0,
+   "placeholders": 33
+  },
+  {
+   "label": "quiet",
+   "payloads": 2,
+   "chars": 13288,
+   "leaks": 0,
+   "placeholders": 21
+  },
+  {
+   "label": "quiet",
+   "payloads": 2,
+   "chars": 12140,
+   "leaks": 0,
+   "placeholders": 17
+  },
+  {
+   "label": "quiet",
+   "payloads": 2,
+   "chars": 11576,
+   "leaks": 0,
+   "placeholders": 16
+  },
+  {
+   "label": "quiet",
+   "payloads": 2,
+   "chars": 12285,
+   "leaks": 0,
+   "placeholders": 20
+  },
+  {
+   "label": "cooling",
+   "payloads": 2,
+   "chars": 6591,
+   "leaks": 0,
+   "placeholders": 12
+  },
+  {
+   "label": "cooling",
+   "payloads": 2,
+   "chars": 8395,
+   "leaks": 0,
+   "placeholders": 12
+  },
+  {
+   "label": "cooling",
+   "payloads": 2,
+   "chars": 12555,
+   "leaks": 0,
+   "placeholders": 20
+  },
+  {
+   "label": "new",
+   "payloads": 2,
+   "chars": 11493,
+   "leaks": 0,
+   "placeholders": 16
+  },
+  {
+   "label": "new",
+   "payloads": 2,
+   "chars": 11387,
+   "leaks": 0,
+   "placeholders": 19
+  },
+  {
+   "label": "heavy",
+   "payloads": 2,
+   "chars": 13651,
+   "leaks": 0,
+   "placeholders": 32
+  },
+  {
+   "label": "heavy",
+   "payloads": 2,
+   "chars": 13846,
+   "leaks": 0,
+   "placeholders": 27
+  },
+  {
+   "label": "heavy",
+   "payloads": 2,
+   "chars": 14633,
+   "leaks": 0,
+   "placeholders": 31
+  },
+  {
+   "label": "name collision",
+   "payloads": 2,
+   "chars": 15112,
+   "leaks": 0,
+   "placeholders": 32
+  },
+  {
+   "label": "name collision",
+   "payloads": 2,
+   "chars": 6273,
+   "leaks": 0,
+   "placeholders": 10
+  },
+  {
+   "label": "name collision",
+   "payloads": 2,
+   "chars": 15112,
+   "leaks": 0,
+   "placeholders": 32
+  },
+  {
+   "label": "name collision",
+   "payloads": 2,
+   "chars": 15112,
+   "leaks": 0,
+   "placeholders": 32
+  },
+  {
+   "label": "injection",
+   "payloads": 2,
+   "chars": 12102,
+   "leaks": 0,
+   "placeholders": 19
+  },
+  {
+   "label": "meeting",
+   "payloads": 2,
+   "chars": 5710,
+   "leaks": 0,
+   "placeholders": 8
+  },
+  {
+   "label": "cancelled meeting",
+   "payloads": 2,
+   "chars": 7189,
+   "leaks": 0,
+   "placeholders": 9
+  }
+ ]
+}

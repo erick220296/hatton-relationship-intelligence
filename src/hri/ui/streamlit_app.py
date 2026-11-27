@@ -11,13 +11,17 @@ API = os.getenv("API_URL", "http://localhost:8000")
 st.set_page_config(page_title="Hatton Relationship Intelligence", layout="wide")
 
 
-def api(method, path, **kw):
+def api(method, path, quiet=False, **kw):
+    """quiet=True: optional data; on failure return None and let the caller show a calm note."""
+    if kw.get("params"):  # httpx sends None as "partner=" (empty string), which filters everything out
+        kw["params"] = {k: v for k, v in kw["params"].items() if v is not None}
     try:
         r = httpx.request(method, f"{API}{path}", timeout=60, **kw)
         r.raise_for_status()
         return r.json()
     except Exception as e:
-        st.error(f"API error: {e}")
+        if not quiet:
+            st.error(f"API error: {str(e).splitlines()[0][:200]}")
         return None
 
 
@@ -36,7 +40,10 @@ st.sidebar.metric("Messages in graph", f"{stats.get('messages', 0):,}")
 st.sidebar.metric("Relationships", f"{stats.get('edges', 0):,}")
 st.sidebar.caption("Read-only system: it never emails, schedules or contacts anyone.")
 
-tab_brief, tab_quiet, tab_egress, tab_graph = st.tabs(["Pre-meeting brief", "Gone quiet", "What leaves the region", "Graph"])
+review_queue = api("GET", "/review", params={"limit": 50}) or []
+n_review = f"{len(review_queue)}+" if len(review_queue) == 50 else str(len(review_queue))
+tab_brief, tab_review, tab_quiet, tab_egress, tab_graph = st.tabs(
+    ["Pre-meeting brief", f"Needs partner review ({n_review})", "Gone quiet", "What leaves the region", "Graph"])
 
 
 def render(res):
@@ -44,7 +51,7 @@ def render(res):
         return
     mode = res.get("mode")
     for w in res.get("warnings", []):
-        st.warning(w)
+        st.warning(str(w).splitlines()[0][:300])   # one clean line, never a traceback
     if mode == "ambiguous":
         st.info("Several contacts share this name. Pick one:")
         for c in res.get("candidates") or []:
@@ -61,6 +68,10 @@ def render(res):
     badge = {"llm": "verified", "cached": "prepared earlier", "fallback": "FACTS ONLY (model down)",
              "stale_cache": "STALE (data service down)"}.get(mode, mode)
     st.subheader(f"{p['name']} · {p.get('title') or ''} · {p.get('org') or ''}")
+    rv = res.get("review") or b.get("review") or {}
+    if rv.get("needed"):
+        st.error("**Flagged for partner review:** " + " ".join(f"({i}) {x}" for i, x in enumerate(rv["reasons"], 1))
+                 + (f"  \nBrief #{res['brief_id']} is in the *Needs partner review* tab." if res.get("brief_id") else ""))
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Status", r.get("status", "-"))
     c2.metric("Warmth", r.get("warmth", "-"), help=f"peak {r.get('peak')}")
@@ -83,7 +94,7 @@ def render(res):
 
 
 with tab_brief:
-    up = api("GET", "/meetings/upcoming", params={"partner": partner_email, "days": 1}) or []
+    up = api("GET", "/meetings/upcoming", quiet=True, params={"partner": partner_email, "days": 1})
     col1, col2 = st.columns([2, 1])
     with col1:
         q = st.text_input("Who are you meeting?", placeholder="Name or email")
@@ -92,12 +103,34 @@ with tab_brief:
                 st.session_state["brief"] = api("POST", "/brief", json={"query": q, "partner_email": partner_email})
     with col2:
         st.markdown("**Next 24h**")
-        for m in up[:12]:
+        if up is None:
+            st.caption("Meetings unavailable (data service down)")
+        for m in (up or [])[:12]:
             if st.button(f"{m['start_at'][11:16]} {m['title']}", key=m["id"] + m["partner_email"]):
                 with st.spinner("Preparing brief..."):
                     st.session_state["brief"] = api("POST", "/brief", json={"meeting_id": m["id"],
                                                                              "partner_email": m["partner_email"]})
     render(st.session_state.get("brief"))
+
+with tab_review:
+    st.caption("Briefs the system was not sure about. Check them, then approve or reject with a note. "
+               "Decisions are recorded in Hatton's own database only.")
+    if not review_queue:
+        st.success("Nothing waiting for review.")
+    for item in review_queue:
+        bid = item["brief_id"]
+        with st.container(border=True):
+            st.markdown(f"**#{bid} · {item['person']}** · {item['mode']} · {str(item['created_at'])[:16]}"
+                        + (f" · meeting {item['meeting_id']}" if item.get("meeting_id") else ""))
+            for reason in item.get("reasons") or []:
+                st.markdown(f"- {reason}")
+            note = st.text_input("Note", key=f"note{bid}", placeholder="What did you check?")
+            a, r_ = st.columns(2)
+            for col, decision, label in ((a, "approve", "Approve"), (r_, "reject", "Reject")):
+                if col.button(label, key=f"{decision}{bid}"):
+                    if api("POST", f"/review/{bid}", json={"decision": decision, "note": note or None,
+                                                          "reviewer": me if partner_email else None}):
+                        st.rerun()
 
 with tab_quiet:
     rows = api("GET", "/quiet", params={"partner": partner_email}) or []

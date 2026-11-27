@@ -101,3 +101,25 @@ def test_tool_database_role_cannot_write():
                     "DELETE FROM message", "SELECT * FROM pseudonym LIMIT 1"]:
             with pytest.raises(psycopg.errors.InsufficientPrivilege):
                 c.execute(sql)
+
+
+def test_observe_never_captures_io():
+    """Langfuse is a third party: every @observe must disable input/output capture (only masked text and
+    counts may reach it). Fails on a bare @observe or one missing capture_input=False / capture_output=False."""
+    offenders = []
+    for path in _py_files():
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for d in node.decorator_list:
+                fn = d.func if isinstance(d, ast.Call) else d
+                name = fn.attr if isinstance(fn, ast.Attribute) else getattr(fn, "id", None)
+                if name != "observe":
+                    continue
+                kw = {k.arg: k.value for k in d.keywords} if isinstance(d, ast.Call) else {}
+                ok = all(isinstance(kw.get(a), ast.Constant) and kw[a].value is False
+                         for a in ("capture_input", "capture_output"))
+                if not ok:
+                    offenders.append(f"{path.relative_to(SRC)}:{d.lineno} {node.name}")
+    assert not offenders, offenders

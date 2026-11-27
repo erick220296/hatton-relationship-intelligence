@@ -47,6 +47,7 @@ class Masker:
         self._dict: dict[str, tuple[str, str]] = {}
         self.use_ner = use_ner
         self._ner = None
+        self._leak_re: re.Pattern | None = None
 
     # -------------------------------------------------------------- loading
     def load_known_entities(self, rows: list[dict] | None = None):
@@ -71,6 +72,7 @@ class Masker:
         except Exception:
             pass
         self._dict = d
+        self._leak_re = None   # rebuilt lazily by find_unmasked
         keys = sorted(d, key=len, reverse=True)
         self._dict_re = re.compile(r"\b(" + "|".join(re.escape(k) for k in keys) + r")\b") if keys else None
 
@@ -115,6 +117,20 @@ class Masker:
             text = text[:r.start] + self._tok(kind, span) + text[r.end:]
         return text
 
+    def find_unmasked(self, text: str) -> list[str]:
+        """Last-line check before egress: real emails, or full names of known people, still in the text
+        (case-insensitive). Returns the kinds found (never the values, so callers can log them safely)."""
+        if not text:
+            return []
+        if self._leak_re is None:
+            names = sorted((k for k, (kind, _) in self._dict.items() if kind == "PERSON" and " " in k),
+                           key=len, reverse=True)
+            self._leak_re = re.compile(r"\b(" + "|".join(re.escape(n) for n in names) + r")\b", re.I) if names else False
+        hits = ["email"] * len(EMAIL_RE.findall(text))
+        if self._leak_re:
+            hits += ["person name"] * len(self._leak_re.findall(text))
+        return hits
+
     def flush(self):
         """Persist new token mappings to the in-region vault."""
         with self._lock:
@@ -127,6 +143,23 @@ class Masker:
                     "INSERT INTO pseudonym (kind, real, token) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
                     [(k, r, t) for (k, r), t in pending.items()])
 
+
+
+class MaskingViolation(RuntimeError):
+    pass
+
+
+def assert_masked(*texts: str) -> None:
+    """Raise MaskingViolation if any text about to leave the region still holds a real email or a known
+    person's full name. Fails closed: if the dictionary cannot be loaded, nothing is sent."""
+    try:
+        mk = _masker or masker()
+    except Exception as e:
+        raise MaskingViolation(f"mask check unavailable: {type(e).__name__}") from e
+    hits = [h for t in texts for h in mk.find_unmasked(t)]
+    if hits:
+        kinds = ", ".join(f"{hits.count(k)} {k}(s)" for k in sorted(set(hits)))
+        raise MaskingViolation(f"payload still contains {kinds}")
 
 
 def unmask(text: str, extra: dict[str, str] | None = None) -> str:

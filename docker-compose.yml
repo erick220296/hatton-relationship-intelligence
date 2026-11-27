@@ -7,7 +7,7 @@ services:
       POSTGRES_USER: hri
       POSTGRES_PASSWORD: hri
       POSTGRES_DB: hri
-    ports: ["5432:5432"]
+    ports: ["127.0.0.1:5432:5432"]   # host-local only: never on the network
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./src/hri/graph/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
@@ -25,7 +25,7 @@ services:
     environment:
       DATABASE_URL: postgresql://hri_ro:hri_ro@db:5432/hri   # SELECT-only role
     depends_on: { db: { condition: service_healthy } }
-    ports: ["8001:8001"]
+    ports: ["127.0.0.1:8001:8001"]   # tool server serves unmasked data: host-local only
 
   api:
     build: .

@@ -13,10 +13,13 @@ from dataclasses import dataclass
 from functools import lru_cache
 
 import anthropic
+import psycopg
 
 from hri.config.settings import cost_usd, kill_switch, settings
 from hri.obs import tracing
-from hri.privacy.egress import egress_client, purpose_var
+from hri.privacy import egress
+from hri.privacy.egress import EgressBlocked, egress_client, purpose_var
+from hri.privacy.masker import MaskingViolation, assert_masked
 
 
 class LLMUnavailable(RuntimeError):
@@ -47,9 +50,23 @@ def batch_client() -> anthropic.Anthropic:
 
 
 def complete(*, model: str, system: str, user: str, purpose: str, max_tokens: int = 2000,
-             json_schema: dict | None = None, effort: str | None = "low") -> LLMResult:
+             json_schema: dict | None = None, effort: str | None = "low", timeout: float | None = None,
+             max_retries: int | None = None) -> LLMResult:
+    """`timeout`/`max_retries` override the client defaults for one call (the brief path passes its
+    remaining time budget and max_retries=0 so a slow call cannot outlive the deadline)."""
     if kill_switch():
         raise LLMUnavailable("LLM provider unavailable (kill switch)")
+    if not settings().anthropic_api_key:
+        raise LLMUnavailable("no model API key configured")
+    try:   # last line of defence: nothing unmasked leaves the region, whatever the caller did
+        assert_masked(system, user)
+    except MaskingViolation as e:
+        try:   # record the refusal; the body is NOT stored (it holds the very data we refused to send)
+            egress._audit(host="api.anthropic.com", method="POST", path="/v1/messages", purpose=purpose,
+                          allowed=False, request_body=f"[blocked by mask check: {e}; body not stored]")
+        except Exception:
+            pass   # the block itself must not depend on the audit write
+        raise LLMUnavailable(f"blocked by mask check: {e}") from e
     token = purpose_var.set(purpose)
     t0 = time.perf_counter()
     try:
@@ -62,10 +79,12 @@ def complete(*, model: str, system: str, user: str, purpose: str, max_tokens: in
             oc["effort"] = effort
         if oc:
             kwargs["output_config"] = oc
-        resp = client().messages.create(**kwargs)
-    except (anthropic.APIConnectionError, anthropic.APITimeoutError, anthropic.InternalServerError,
-            anthropic.RateLimitError) as e:
-        raise LLMUnavailable(str(e)) from e
+        opts = {k: v for k, v in (("timeout", timeout), ("max_retries", max_retries)) if v is not None}
+        resp = (client().with_options(**opts) if opts else client()).messages.create(**kwargs)
+    except anthropic.APIError as e:   # every SDK error: network, timeout, 5xx, 429, 400/401/403/404 ...
+        raise LLMUnavailable(f"{type(e).__name__}: {e}") from e
+    except (TypeError, EgressBlocked, psycopg.Error) as e:   # auth resolution, blocked host, egress-audit write
+        raise LLMUnavailable(f"{type(e).__name__}: {e}") from e
     finally:
         purpose_var.reset(token)
     if resp.stop_reason == "refusal":
