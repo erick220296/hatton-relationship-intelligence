@@ -384,3 +384,39 @@ http://localhost:8501 loads.
 be shown from another device); there's no login on them. Old images built before this fix may still exist
 in local caches or registries: rebuild and remove them. `.env` must still never be committed (it is in
 `.gitignore`).
+
+---
+
+## F12: A last-line mask check at the door out (assert_masked)
+
+**What was wrong.** The header of `llm.py` promised an `assert_masked` safety check, but it did not exist.
+Whether a prompt was masked depended entirely on every caller remembering to mask. One forgotten
+`mask()` call would send real names to the model provider.
+
+**What changed.**
+- `src/hri/privacy/masker.py`: `Masker.find_unmasked(text)` finds any real email address, or the full name
+  of any known person from the masking dictionary (case-insensitive). It returns only the *kinds* found,
+  never the values. `assert_masked(*texts)` raises `MaskingViolation` on a hit. It fails closed: if the
+  dictionary can't be loaded, nothing is sent.
+- `src/hri/llm.py`: `complete()` runs `assert_masked(system, user)` right before the HTTP call (after the
+  kill-switch and key checks). On a hit it writes an `egress_audit` row marked **blocked** (purpose and
+  reason, *not* the body, because the body holds the data we refused to send) and raises `LLMUnavailable`.
+  The brief then becomes facts-only with the review flag (F01/F05).
+- Tests (`tests/test_masking.py`, +4): names (any letter case) and emails are caught; a properly masked
+  payload passes. Negative controls: placeholders only, a name not in the dictionary, and a surname alone are
+  not flagged. An unmasked payload is blocked with **zero HTTP calls** and one audit row with no name in
+  it; a masked payload passes and reaches the HTTP call. `tests/test_llm_errors.py` now uses an in-memory
+  masker and checks that the fake HTTP call was really reached.
+
+**Course concept.** *Defence in depth / guardrail at the boundary*: one independent check at the single
+exit point, so a bug upstream cannot leak data.
+
+**How to see it working.** `uv run pytest -q tests/test_masking.py`. Live, with no key, briefs still come
+back as facts-only (no regression): the check runs only when a call would really be made.
+
+**What still breaks it / limits.** It knows only names in our dictionary (people and NER terms from ingest)
+and email addresses. A phone number, an address, or a name we've never seen is not caught here; the masker's
+own rules cover those. It catches full names, not a first or last name alone (to avoid blocking ordinary
+words). Because it is case-insensitive while the masker is not, an all-caps name in an email ("JAMIE
+TUCKER") is blocked here (fail closed: facts-only brief) rather than masked. The Batch API extraction
+path (`batch_client`) does not go through `complete()`, so it is not checked here.

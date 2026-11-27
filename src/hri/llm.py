@@ -17,7 +17,9 @@ import psycopg
 
 from hri.config.settings import cost_usd, kill_switch, settings
 from hri.obs import tracing
+from hri.privacy import egress
 from hri.privacy.egress import EgressBlocked, egress_client, purpose_var
+from hri.privacy.masker import MaskingViolation, assert_masked
 
 
 class LLMUnavailable(RuntimeError):
@@ -56,6 +58,15 @@ def complete(*, model: str, system: str, user: str, purpose: str, max_tokens: in
         raise LLMUnavailable("LLM provider unavailable (kill switch)")
     if not settings().anthropic_api_key:
         raise LLMUnavailable("no model API key configured")
+    try:   # last line of defence: nothing unmasked leaves the region, whatever the caller did
+        assert_masked(system, user)
+    except MaskingViolation as e:
+        try:   # record the refusal; the body is NOT stored (it holds the very data we refused to send)
+            egress._audit(host="api.anthropic.com", method="POST", path="/v1/messages", purpose=purpose,
+                          allowed=False, request_body=f"[blocked by mask check: {e}; body not stored]")
+        except Exception:
+            pass   # the block itself must not depend on the audit write
+        raise LLMUnavailable(f"blocked by mask check: {e}") from e
     token = purpose_var.set(purpose)
     t0 = time.perf_counter()
     try:

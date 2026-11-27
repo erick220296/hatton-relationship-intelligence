@@ -39,13 +39,19 @@ class _Raising:
     def __init__(self, err):
         self.messages = self
         self.err = err
+        self.called = False
 
     def create(self, **kw):
+        self.called = True
         raise self.err
 
 
 @pytest.fixture
 def keyed(monkeypatch):
+    from hri.privacy import masker as masker_mod
+    mk = masker_mod.Masker()
+    mk.load_known_entities([{"name": "Guy Cameron", "org": "Graham Endowment"}])   # in-memory: no DB
+    monkeypatch.setattr(masker_mod, "_masker", mk)
     monkeypatch.setattr(llm, "kill_switch", lambda: False)
     monkeypatch.setattr(settings(), "anthropic_api_key", "test-key-not-real")
 
@@ -64,9 +70,11 @@ def test_empty_api_key_is_treated_like_the_kill_switch(monkeypatch):
 
 @pytest.mark.parametrize("err", ERRORS, ids=lambda e: type(e).__name__)
 def test_every_model_error_maps_to_llm_unavailable(keyed, monkeypatch, err):
-    monkeypatch.setattr(llm, "client", lambda: _Raising(err))
+    fake = _Raising(err)
+    monkeypatch.setattr(llm, "client", lambda: fake)
     with pytest.raises(llm.LLMUnavailable):
         _call()
+    assert fake.called   # the error came from the (fake) HTTP call, not from an earlier check
 
 
 async def test_brief_without_key_degrades_to_facts_only(brief_env, monkeypatch):
