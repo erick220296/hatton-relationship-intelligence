@@ -1,0 +1,232 @@
+{
+ "summary": {
+  "run_at": "2026-11-27T16:50:10.979118Z",
+  "concurrency": 15,
+  "requests": 30,
+  "wall_seconds": 29.2,
+  "throughput_per_min": 61.6,
+  "p50_ms": 11278,
+  "p95_ms": 14630,
+  "p99_ms": 16024,
+  "max_ms": 16024,
+  "within_30s": "30/30",
+  "error_rate": 0.0,
+  "modes": {
+   "llm": 30
+  },
+  "total_cost_usd": 0.6272,
+  "cost_per_brief_usd": 0.02091
+ },
+ "results": [
+  {
+   "ms": 10967,
+   "ok": true,
+   "mode": "llm",
+   "status": 200,
+   "cost": 0.020199
+  },
+  {
+   "ms": 10974,
+   "ok": true,
+   "mode": "llm",
+   "status": 200,
+   "cost": 0.02126
+  },
+  {
+   "ms": 11009,
+   "ok": true,
+   "mode": "llm",
+   "status": 200,
+   "cost": 0.02108
+  },
+  {
+   "ms": 11111,
+   "ok": true,
+   "mode": "llm",
+   "status": 200,
+   "cost": 0.02037
+  },
+  {
+   "ms": 11278,
+   "ok": true,
+   "mode": "llm",
+   "status": 200,
+   "cost": 0.020334
+  },
+  {
+   "ms": 11442,
+   "ok": true,
+   "mode": "llm",
+   "status": 200,
+   "cost": 0.020823
+  },
+  {
+   "ms": 11521,
+   "ok": true,
+   "mode": "llm",
+   "status": 200,
+   "cost": 0.019505
+  },
+  {
+   "ms": 11610,
+   "ok": true,
+   "mode": "llm",
+   "status": 200,
+   "cost": 0.021682
+  },
+  {
+   "ms": 11706,
+   "ok": true,
+   "mode": "llm",
+   "status": 200,
+   "cost": 0.022823
+  },
+  {
+   "ms": 11803,
+   "ok": true,
+   "mode": "llm",
+   "status": 200,
+   "cost": 0.021403
+  },
+  {
+   "ms": 11984,
+   "ok": true,
+   "mode": "llm",
+   "status": 200,
+   "cost": 0.02328
+  },
+  {
+   "ms": 13636,
+   "ok": true,
+   "mode": "llm",
+   "status": 200,
+   "cost": 0.021003
+  },
+  {
+   "ms": 14119,
+   "ok": true,
+   "mode": "llm",
+   "status": 200,
+   "cost": 0.020022
+  },
+  {
+   "ms": 14523,
+   "ok": true,
+   "mode": "llm",
+   "status": 200,
+   "cost": 0.02173
+  },
+  {
+   "ms": 16024,
+   "ok": true,
+   "mode": "llm",
+   "status": 200,
+   "cost": 0.022998
+  },
+  {
+   "ms": 7902,
+   "ok": true,
+   "mode": "llm",
+   "status": 200,
+   "cost": 0.014959
+  },
+  {
+   "ms": 9209,
+   "ok": true,
+   "mode": "llm",
+   "status": 200,
+   "cost": 0.018907
+  },
+  {
+   "ms": 9092,
+   "ok": true,
+   "mode": "llm",
+   "status": 200,
+   "cost": 0.019217
+  },
+  {
+   "ms": 10113,
+   "ok": true,
+   "mode": "llm",
+   "status": 200,
+   "cost": 0.021051
+  },
+  {
+   "ms": 9848,
+   "ok": true,
+   "mode": "llm",
+   "status": 200,
+   "cost": 0.020492
+  },
+  {
+   "ms": 10350,
+   "ok": true,
+   "mode": "llm",
+   "status": 200,
+   "cost": 0.021222
+  },
+  {
+   "ms": 9754,
+   "ok": true,
+   "mode": "llm",
+   "status": 200,
+   "cost": 0.018618
+  },
+  {
+   "ms": 10510,
+   "ok": true,
+   "mode": "llm",
+   "status": 200,
+   "cost": 0.022061
+  },
+  {
+   "ms": 9865,
+   "ok": true,
+   "mode": "llm",
+   "status": 200,
+   "cost": 0.019086
+  },
+  {
+   "ms": 10770,
+   "ok": true,
+   "mode": "llm",
+   "status": 200,
+   "cost": 0.020704
+  },
+  {
+   "ms": 12339,
+   "ok": true,
+   "mode": "llm",
+   "status": 200,
+   "cost": 0.022097
+  },
+  {
+   "ms": 9627,
+   "ok": true,
+   "mode": "llm",
+   "status": 200,
+   "cost": 0.02134
+  },
+  {
+   "ms": 14409,
+   "ok": true,
+   "mode": "llm",
+   "status": 200,
+   "cost": 0.022116
+  },
+  {
+   "ms": 14630,
+   "ok": true,
+   "mode": "llm",
+   "status": 200,
+   "cost": 0.023322
+  },
+  {
+   "ms": 13190,
+   "ok": true,
+   "mode": "llm",
+   "status": 200,
+   "cost": 0.023467
+  }
+ ]
+}

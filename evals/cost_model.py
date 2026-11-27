@@ -119,7 +119,7 @@ def main():
         "| Embedding 40k messages (local) | – | – | $0.00 API |",
         "", "## 2. Running cost per unit (measured)",
         f"- **One pre-meeting brief:** mean **${per_brief:.4f}**, p95 ${p95_brief:.4f} (n={len(brief_costs)} measured briefs: generate + verify; "
-        f"measured in the 25 Nov eval run on the code *before* the 27 Nov fixes, `docs/evidence/brief_eval.json`)"
+        f"real-model runs on 27 Nov after the fixes: brief eval `docs/evidence/brief_eval.json` + load tests `docs/evidence/load_c*.json`)"
         if per_brief else "- One pre-meeting brief: _run `make eval` / `make load` first_",
         f"- Ongoing extraction per new thread (sync, unbatched): ${ex.get('usd', 0):.5f} "
         + (f"({ex['basis']})" if ex.get("basis") else f"(n={ex.get('n')} measured calls)"),
@@ -154,8 +154,8 @@ def main():
         f"Hatton break-even = monthly fee ÷ ${value_per_brief:.2f} of partner time per first-meeting prep. "
         "Only first meetings are counted (the client's 30–45 min figure is for first meetings), so this is conservative: "
         "below that many first meetings a month, the fee costs Hatton more than the partner time it saves.",
-        f"Measured per-brief cost comes from n={len(brief_costs)} briefs; re-run `make eval` and `make load` "
-        "to refresh it from Langfuse-traced runs.",
+        f"Measured per-brief cost comes from n={len(brief_costs)} real briefs (27 Nov, after the fixes, each one also "
+        "traced in Langfuse); re-run `make eval` and `make load` to refresh it.",
         "", "## 6. Sensitivity", "| Change | Effect on normal monthly total |", "|---|---|",
         f"| Stress volume: {vol.get('briefs_per_day_stress', 45)} briefs/day (3× peak, load-test level) | "
         f"total ${month(vol.get('briefs_per_day_stress', 45), vol['messages_per_day_peak'])['total']:.2f}/month |",
