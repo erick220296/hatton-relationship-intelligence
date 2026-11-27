@@ -586,3 +586,32 @@ prints `True` (outside pytest, tracing is on, as it should be for the API).
 `make eval-brief`, `make load`, `make big-context`) do trace to real Langfuse. That is intended for real
 evaluation runs, and load-test briefs are tagged `load-test`. Traces sent by earlier test runs are already in
 the dashboard; filter them out by time or by the absence of real cost.
+
+---
+
+## B6: The brief eval is judged by a different model than the one that writes briefs
+
+**What was wrong.** The offline brief evaluation (`make eval-brief`) re-checks every claim with a "judge" model,
+but it used `brief_model`, the same model that writes the briefs. A writer grading its own work is not an
+independent check.
+
+**What changed.**
+- `src/hri/config/settings.py`: new setting `eval_judge_model` (env `EVAL_JUDGE_MODEL`), default
+  `claude-opus-5-5`. Its price is already in `src/hri/config/prices.yaml`.
+- `evals/run_brief_eval.py`: the judge uses `eval_judge_model`. The summary JSON now records `judge_model`
+  (plus `writer_model`, `verifier_model`) and `before_fixes_run`; the generated `brief_eval.md` names the
+  before-fixes run at the top.
+- The 25 Nov run is preserved as `docs/evidence/brief_eval_2026-11-25.json` and `.md` (the next run overwrites
+  `brief_eval.json`/`.md`). The current `brief_eval.md` says it is the "before fixes" run.
+- Tests (`tests/test_eval_judge.py`, model stubbed, nothing paid): default and env override of the setting;
+  the judge calls the judge model, not the writer, with masked text; the baseline file is the 25 Nov run.
+
+**Course concept.** *Independent evaluation (LLM-as-judge)*: the judge should differ from the system under
+test (here a stronger model with a stricter prompt), or its scores flatter the system.
+
+**How to see it working.** `uv run pytest -q tests/test_eval_judge.py`. The real run costs money:
+`make eval-brief` (writes `docs/evidence/brief_eval.json` with `"judge_model": "claude-opus-5-5"`).
+
+**What still breaks it / limits.** An Opus judge is stronger but not ground truth; it is still a model. The 25 Nov
+baseline was judged by the writer model, so before/after numbers differ in judge as well as in code: compare
+them with that caveat.

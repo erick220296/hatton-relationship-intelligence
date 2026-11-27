@@ -1,5 +1,8 @@
 # Brief evaluation
 
+This is the **before fixes** run (25 Nov, code before the 27 Nov fixes; the judge was the writer model).
+Preserved as `docs/evidence/brief_eval_2026-11-25.json` / `.md`; the next `make eval-brief` replaces this file.
+
 ```json
 {
  "run_at": "2026-11-25T22:32:12.329560+00:00",

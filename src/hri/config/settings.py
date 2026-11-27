@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     extract_model: str = "claude-haiku-5-5"
     brief_model: str = "claude-sonnet-5-5"
     verify_model: str = "claude-haiku-5-5"
+    eval_judge_model: str = "claude-opus-5-5"   # offline eval judge (env EVAL_JUDGE_MODEL): never the writer model
     llm_kill_switch: bool = False
     vertical: str = "pe"
     # The demo clock. Corpus backfill ends 2026-11-24; "now" is the morning after.
