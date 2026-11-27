@@ -63,6 +63,21 @@ def _elapsed(s: BriefState) -> float:
     return time.perf_counter() - s["t0"]
 
 
+GENERATE_MIN_S = 12.0   # don't start the model if less than this is left of the brief's time budget
+
+
+def _remaining(s: BriefState) -> float:
+    return settings().brief_timeout_s - _elapsed(s)
+
+
+def _mask_flush(*texts: str) -> list[str]:
+    """Mask, then persist new pseudonyms (a DB write). Sync: callers run it in a worker thread."""
+    mk = masker()
+    out = [mk.mask(t) for t in texts]
+    mk.flush()
+    return out
+
+
 def _timed(name):
     def deco(fn):
         async def wrapper(state: BriefState):
@@ -170,9 +185,8 @@ async def build(s: BriefState) -> dict:
             if INJECTION_RE.search(m["body"] or ""):
                 withheld.append({"id": m["id"], "sent_at": m["sent_at"], "subject": t["subject"]})
                 m["body"] = "[message withheld by Hatton safety filter: it contains instructions aimed at AI systems]"
-    ctx = build_context(d["profile"], d["threads"], d["commitments"], d["index"], d["hits"],
-                        settings().context_budget_tokens)
-    mk = masker()
+    ctx = await asyncio.to_thread(build_context, d["profile"], d["threads"], d["commitments"], d["index"],
+                                  d["hits"], settings().context_budget_tokens)
     # raw (unmasked, in-region) evidence; only the sources a claim actually cites get masked, in verify
     evidence = {"PROFILE": ctx.text.split("## COMMITMENTS")[0].split("## RECENT THREADS")[0]}
     for t in d["threads"]:
@@ -184,8 +198,7 @@ async def build(s: BriefState) -> dict:
         evidence.setdefault(x["first_id"], f"{x['started'][:10]} thread subject: {x['subject']}")
     for h in d["hits"]:
         evidence.setdefault(h["id"], f"{h['sent_at'][:10]} {h['subject']}: {h['body']}")
-    masked = mk.mask(ctx.text)
-    mk.flush()
+    masked, = await asyncio.to_thread(_mask_flush, ctx.text)
     warnings = list(s.get("warnings", []))
     if withheld:
         warnings.append(f"{len(withheld)} message(s) withheld: they contained instructions aimed at AI systems "
@@ -202,24 +215,34 @@ async def build(s: BriefState) -> dict:
 @observe(name="generate", capture_input=False, capture_output=False)
 @_span_counts
 async def generate(s: BriefState) -> dict:
-    mk = masker()
+    left = _remaining(s)
+    if left < GENERATE_MIN_S:   # not enough time for a model draft + fact-check: degrade now, not at the deadline
+        return {"mode": "fallback", "warnings": s.get("warnings", []) + [
+            f"Only {max(left, 0):.0f} s of the {settings().brief_timeout_s:.0f} s budget left; "
+            "skipped the language model and showing facts-only brief."]}
     prof = s["data"]["profile"]
     meeting = s.get("meeting") or {}
-    user = BRIEF_USER.format(meeting=mk.mask(f"{meeting.get('title', 'ad-hoc')} {str(meeting.get('start_at', ''))[:16]}"),
-                             partner=mk.mask(s.get("partner_email") or "any partner"),
-                             person=mk.mask(prof["name"]), context=s["context"]["masked_text"])
+    m_meeting, m_partner, m_person = await asyncio.to_thread(
+        _mask_flush, f"{meeting.get('title', 'ad-hoc')} {str(meeting.get('start_at', ''))[:16]}",
+        s.get("partner_email") or "any partner", prof["name"])
+    user = BRIEF_USER.format(meeting=m_meeting, partner=m_partner, person=m_person,
+                             context=s["context"]["masked_text"])
     if s.get("dropped") and s.get("attempts", 0) >= 1:
         user += ("\nPREVIOUS DRAFT PROBLEMS (fix them, do not repeat these claims):\n" +
                  "\n".join(f"- {d['text']} :: {d['reason']}" for d in s["dropped"][:10]))
-    mk.flush()
     system = BRIEF_SYSTEM.format(max_words=vertical()["brief"]["max_words"])
+    call_s = max(_remaining(s) - 6, 1.0)   # leave time to fact-check and render
     try:
-        draft, res = await asyncio.to_thread(complete_json, model=settings().brief_model, system=system, user=user,
-                                             purpose="brief_generate", max_tokens=1500, json_schema=BRIEF_SCHEMA,
-                                             effort="low")
+        draft, res = await asyncio.wait_for(asyncio.to_thread(
+            complete_json, model=settings().brief_model, system=system, user=user, purpose="brief_generate",
+            max_tokens=1500, json_schema=BRIEF_SCHEMA, effort="low", timeout=call_s, max_retries=0),
+            timeout=call_s + 1)
     except LLMUnavailable as e:
         return {"mode": "fallback", "warnings": s.get("warnings", []) + [f"Language model unavailable ({e}); "
                                                                          "showing facts-only brief."]}
+    except asyncio.TimeoutError:
+        return {"mode": "fallback", "warnings": s.get("warnings", []) + [
+            f"Language model did not answer within {call_s:.0f} s; showing facts-only brief."]}
     return {"draft": draft, "attempts": s.get("attempts", 0) + 1, "cost_usd": s.get("cost_usd", 0) + res.cost_usd}
 
 
@@ -240,14 +263,17 @@ async def verify(s: BriefState) -> dict:
     cost = s.get("cost_usd", 0.0)
     unchecked = None   # why the fact-check could not run, if it could not
     if claims and _elapsed(s) < settings().brief_timeout_s - 6:
-        ev, mk = s["evidence"], masker()
+        ev = s["evidence"]
+        cited = sorted({x for c in claims for x in c["cites"]})
+        masked = dict(zip(cited, await asyncio.to_thread(_mask_flush, *(ev.get(x, "(missing)") for x in cited))))
         listing = "\n\n".join(f"CLAIM {i}: {c['text']}\nSOURCES:\n" + "\n".join(
-            f"  [{x}] {mk.mask(ev.get(x, '(missing)'))}" for x in c["cites"]) for i, c in enumerate(claims))
-        mk.flush()
+            f"  [{x}] {masked[x]}" for x in c["cites"]) for i, c in enumerate(claims))
+        call_s = max(_remaining(s) - 1, 1.0)
         try:
-            out, res = await asyncio.to_thread(complete_json, model=settings().verify_model, system=VERIFY_SYSTEM,
-                                               user=listing, purpose="brief_verify", max_tokens=4000,
-                                               json_schema=VERIFY_SCHEMA, effort="low")
+            out, res = await asyncio.wait_for(asyncio.to_thread(
+                complete_json, model=settings().verify_model, system=VERIFY_SYSTEM, user=listing,
+                purpose="brief_verify", max_tokens=4000, json_schema=VERIFY_SCHEMA, effort="low",
+                timeout=call_s, max_retries=0), timeout=call_s + 1)
             cost += res.cost_usd
             verdicts = {v["i"]: v for v in out["verdicts"]}
             kept = []
@@ -260,6 +286,8 @@ async def verify(s: BriefState) -> dict:
             claims = kept
         except (LLMUnavailable, KeyError, TypeError) as e:   # down, or a malformed verdict list
             unchecked = f"Verifier unavailable ({e})"
+        except asyncio.TimeoutError:
+            unchecked = f"Verifier did not answer within {call_s:.0f} s"
     elif claims:
         unchecked = "Fact-check skipped to stay inside the latency budget"
     out = {"cost_usd": cost}
@@ -302,12 +330,15 @@ def _after_verify(s: BriefState) -> str:
 @observe(name="finalize", capture_input=False, capture_output=False)
 @_span_counts
 async def finalize(s: BriefState) -> dict:
-    sections: dict[str, list] = {sec: [] for sec in SECTIONS}
-    for c in s["verified"]["claims"]:
-        sections[c["section"]].append({"text": unmask(c["text"]), "cites": c["cites"]})
+    def render():   # unmask can read the pseudonym vault (DB): keep it off the event loop
+        sections: dict[str, list] = {sec: [] for sec in SECTIONS}
+        for c in s["verified"]["claims"]:
+            sections[c["section"]].append({"text": unmask(c["text"]), "cites": c["cites"]})
+        return sections, [{"text": unmask(d["text"]), "reason": unmask(d["reason"])} for d in s.get("dropped") or []]
+    sections, dropped = await asyncio.to_thread(render)
     brief = fallback.header(s["data"], s.get("partner_email"), s.get("meeting"))
     brief["sections"] = sections
-    brief["dropped_claims"] = [{"text": unmask(d["text"]), "reason": unmask(d["reason"])} for d in s.get("dropped") or []]
+    brief["dropped_claims"] = dropped
     brief["context_stats"] = s["context"]["stats"]
     brief["profile_source"] = s["evidence"]["PROFILE"]   # exactly what PROFILE citations refer to (for audit/eval)
     brief["review"] = _review(s, "llm")
@@ -322,7 +353,8 @@ async def facts_only(s: BriefState) -> dict:
     if s.get("context"):   # what the context budgeter kept/compressed/omitted, even when the model is down
         brief["context_stats"] = s["context"]["stats"]
     if s.get("dropped"):   # shown as removed, for transparency; never as brief content
-        brief["dropped_claims"] = [{"text": unmask(d["text"]), "reason": unmask(d["reason"])} for d in s["dropped"]]
+        brief["dropped_claims"] = await asyncio.to_thread(
+            lambda: [{"text": unmask(d["text"]), "reason": unmask(d["reason"])} for d in s["dropped"]])
     brief["review"] = _review(s, "fallback")
     return {"brief": brief, "mode": "fallback"}
 
@@ -361,6 +393,24 @@ def build_graph(checkpointer=None):
 _graph = None
 
 
+def _at_deadline(last: dict) -> dict:
+    """The hard deadline hit mid-graph: build the facts-only brief from whatever was already gathered
+    (or report 'delayed' if not even the data arrived). Never raises, never returns model text."""
+    msg = f"Brief deadline ({settings().brief_timeout_s + 4:.0f} s) reached before the brief was finished."
+    s = {**last, "warnings": list(last.get("warnings") or []) + [msg + " Showing facts-only brief."],
+         "review": list(last.get("review") or []) + [msg], "verified": {"claims": []}, "dropped": []}
+    if last.get("mode") in ("ambiguous", "not_found", "unavailable"):
+        return last
+    if not last.get("data"):
+        return {**s, "mode": "delayed", "brief": None, "warnings": s["warnings"][:-1] + [
+            msg + " No relationship data yet; try again."], "delayed_review": {"needed": True, "reasons": s["review"]}}
+    brief = fallback.facts_only(s["data"], s.get("partner_email"), s.get("meeting"))
+    if s.get("context"):
+        brief["context_stats"] = s["context"]["stats"]
+    brief["review"] = _review(s, "fallback")
+    return {**s, "brief": brief, "mode": "fallback"}
+
+
 @observe(name="pre_meeting_brief", capture_input=False, capture_output=False)
 async def run_brief(request: dict[str, Any], run_id: str, checkpointer=None) -> dict:
     global _graph
@@ -369,13 +419,23 @@ async def run_brief(request: dict[str, Any], run_id: str, checkpointer=None) -> 
     t0 = time.perf_counter()
     state: BriefState = {"request": request, "t0": t0, "warnings": [], "cost_usd": 0.0, "timings": {}}
     cfg = {"configurable": {"thread_id": run_id}}
-    out = await asyncio.wait_for(_graph.ainvoke(state, cfg), timeout=settings().brief_timeout_s + 4)
+    last: dict = dict(state)
+
+    async def _run():
+        nonlocal last
+        async for values in _graph.astream(state, cfg, stream_mode="values"):
+            last = values   # the full state after each step: what we fall back on at the deadline
+    try:
+        await asyncio.wait_for(_run(), timeout=settings().brief_timeout_s + 4)
+        out = last
+    except asyncio.TimeoutError:
+        out = _at_deadline(last)
     res = {"mode": out.get("mode", "llm"), "brief": out.get("brief"), "candidates": out.get("candidates"),
            "warnings": out.get("warnings", []), "cost_usd": round(out.get("cost_usd", 0.0), 6),
            "latency_ms": int((time.perf_counter() - t0) * 1000), "timings": out.get("timings", {}),
            "person_id": out.get("person_id"), "partner_email": out.get("partner_email"),
            "meeting_id": (out.get("meeting") or {}).get("id"),
-           "review": (out.get("brief") or {}).get("review")}
+           "review": (out.get("brief") or {}).get("review") or out.get("delayed_review")}
     tracing.span_meta(mode=res["mode"], person_id=res["person_id"], meeting_id=res["meeting_id"],
                       latency_ms=res["latency_ms"], cost_usd=res["cost_usd"], timings=res["timings"],
                       n_warnings=len(res["warnings"]), n_dropped=len(out.get("dropped") or []))

@@ -152,3 +152,78 @@ async def _state_before_verify(env) -> dict:
         s.update(await node(s))
     env.calls.clear()
     return s
+
+
+# ---------------------------------------------------------------- F06: the deadline degrades, never 504
+async def test_hanging_model_returns_facts_only_within_30s(brief_env):
+    """Real 25 s budget: the model 'hangs' for 60 s; the brief still comes back in < 30 s, facts only."""
+    import time
+    brief_env.brief = lambda user: brief_env.release.wait(60) or {}
+    t = time.perf_counter()
+    try:
+        res = await bg.run_brief(REQ, "t-hang")
+    finally:
+        brief_env.release.set()   # let the abandoned worker thread exit (a real SDK call has its own timeout)
+    assert time.perf_counter() - t < 30
+    assert res["mode"] == "fallback"
+    assert res["review"]["needed"] is True
+    assert any("did not answer within" in w for w in res["warnings"])
+
+
+async def test_brief_path_calls_use_budget_timeout_and_no_retries(brief_env):
+    await bg.run_brief(REQ, "t-opts")
+    for purpose, kw in brief_env.calls:
+        assert kw["max_retries"] == 0, purpose
+        assert 0 < kw["timeout"] <= 25, purpose
+
+
+async def test_too_little_time_left_skips_the_model(brief_env, monkeypatch):
+    from hri.config.settings import settings
+    monkeypatch.setattr(settings(), "brief_timeout_s", 8.0)        # < GENERATE_MIN_S from the start
+    res = await bg.run_brief(REQ, "t-notime")
+    assert res["mode"] == "fallback" and brief_env.calls == []
+    assert res["review"]["needed"] is True
+
+
+async def test_hard_deadline_mid_graph_builds_facts_from_gathered_data(brief_env, monkeypatch):
+    """Something other than the model hangs (here: context building). The outer deadline fires and the
+    brief is built from the data already gathered, instead of raising TimeoutError (old: HTTP 504)."""
+    import time
+    from hri.config.settings import settings
+    monkeypatch.setattr(settings(), "brief_timeout_s", 2.0)        # outer deadline = 2 + 4 = 6 s
+    monkeypatch.setattr(bg, "build_context", lambda *a, **k: brief_env.release.wait(60))
+    t = time.perf_counter()
+    try:
+        res = await bg.run_brief(REQ, "t-deadline")
+    finally:
+        brief_env.release.set()
+    assert time.perf_counter() - t < 10
+    assert res["mode"] == "fallback"
+    assert res["brief"]["person"]["name"] == "Guy Cameron"
+    assert res["review"]["needed"] and any("deadline" in r.lower() for r in res["review"]["reasons"])
+
+
+async def test_hard_deadline_before_any_data_is_delayed_not_an_error(brief_env, monkeypatch):
+    import asyncio
+    from hri.config.settings import settings
+    monkeypatch.setattr(settings(), "brief_timeout_s", 1.0)
+
+    class Slow:
+        async def call(self, name, **a):
+            await asyncio.sleep(30)
+
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def slow_tools(url=None):
+        yield Slow()
+    monkeypatch.setattr(bg, "mcp_tools", slow_tools)
+    res = await bg.run_brief(REQ, "t-delayed")
+    assert res["mode"] == "delayed" and res["brief"] is None
+    assert res["review"]["needed"] is True
+
+
+def test_api_has_no_504_path():
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[1] / "src/hri/api/app.py").read_text()
+    assert "HTTPException(504" not in src

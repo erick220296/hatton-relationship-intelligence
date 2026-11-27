@@ -78,30 +78,29 @@ def _cached(meeting_id: str | None = None, person_id: int | None = None) -> dict
 @app.post("/brief")
 async def brief(req: BriefRequest):
     if req.meeting_id and not req.fresh:
-        c = _cached(meeting_id=req.meeting_id)
+        c = await asyncio.to_thread(_cached, meeting_id=req.meeting_id)
         if c:
             return {"mode": "cached", "brief": c["content"], "warnings": [f"Prepared at {c['created_at']:%H:%M}"],
                     "latency_ms": 0, "cost_usd": 0, "brief_id": c["id"], "person_id": c["person_id"],
                     "review": c["content"].get("review")}
     run_id = str(uuid.uuid4())
-    try:
-        res = await run_brief(req.model_dump(exclude={"fresh"}), run_id, _checkpointer)
-    except asyncio.TimeoutError:
-        raise HTTPException(504, "Brief timed out")
+    # run_brief never raises on the deadline: it degrades to facts-only (or 'delayed') inside the budget
+    res = await run_brief(req.model_dump(exclude={"fresh"}), run_id, _checkpointer)
     res["run_id"] = run_id
     res["trace_id"] = tracing.current_trace_id()
-    if res["mode"] == "unavailable":
+    if res["mode"] in ("unavailable", "delayed"):
         pid = req.person_id
         if not pid and req.query:   # tools are down: resolve the name from our own store instead
-            hits = db.q("SELECT id FROM person WHERE NOT is_partner AND (lower(name)=lower(%s) OR lower(email)=lower(%s))",
-                        (req.query.strip(), req.query.strip()))
+            hits = await asyncio.to_thread(
+                db.q, "SELECT id FROM person WHERE NOT is_partner AND (lower(name)=lower(%s) OR lower(email)=lower(%s))",
+                (req.query.strip(), req.query.strip()))
             pid = hits[0]["id"] if len(hits) == 1 else None
-        c = _cached(meeting_id=req.meeting_id, person_id=pid)
+        c = await asyncio.to_thread(_cached, meeting_id=req.meeting_id, person_id=pid)
         if c:
             res.update(brief=c["content"], mode="stale_cache", review=c["content"].get("review"))
             res["warnings"].append(f"Showing the last good brief from {c['created_at']:%Y-%m-%d %H:%M}.")
     if res["mode"] in ("llm", "fallback"):
-        res["brief_id"] = _store(res)
+        res["brief_id"] = await asyncio.to_thread(_store, res)
     return res
 
 

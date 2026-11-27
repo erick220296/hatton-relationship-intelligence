@@ -48,7 +48,10 @@ def batch_client() -> anthropic.Anthropic:
 
 
 def complete(*, model: str, system: str, user: str, purpose: str, max_tokens: int = 2000,
-             json_schema: dict | None = None, effort: str | None = "low") -> LLMResult:
+             json_schema: dict | None = None, effort: str | None = "low", timeout: float | None = None,
+             max_retries: int | None = None) -> LLMResult:
+    """`timeout`/`max_retries` override the client defaults for one call (the brief path passes its
+    remaining time budget and max_retries=0 so a slow call cannot outlive the deadline)."""
     if kill_switch():
         raise LLMUnavailable("LLM provider unavailable (kill switch)")
     if not settings().anthropic_api_key:
@@ -65,7 +68,8 @@ def complete(*, model: str, system: str, user: str, purpose: str, max_tokens: in
             oc["effort"] = effort
         if oc:
             kwargs["output_config"] = oc
-        resp = client().messages.create(**kwargs)
+        opts = {k: v for k, v in (("timeout", timeout), ("max_retries", max_retries)) if v is not None}
+        resp = (client().with_options(**opts) if opts else client()).messages.create(**kwargs)
     except anthropic.APIError as e:   # every SDK error: network, timeout, 5xx, 429, 400/401/403/404 ...
         raise LLMUnavailable(f"{type(e).__name__}: {e}") from e
     except (TypeError, EgressBlocked, psycopg.Error) as e:   # auth resolution, blocked host, egress-audit write

@@ -157,3 +157,50 @@ check cannot run, treat the output as unverified and withhold it, rather than tr
 marks "supported" still gets through (the 42% judge finding needs the real model to re-measure). The
 injection filter is a regex: a cleverly worded injection is not withheld (but the model is still told
 emails are data, not instructions). The 30% threshold is a judgement call, not tuned.
+
+---
+
+## F06: The 30-second deadline degrades to facts-only, never HTTP 504
+
+**What was wrong.** The promise is a brief in under 30 seconds. The code kept it by *failing*: the whole
+agent ran under `asyncio.wait_for(29 s)`, and when that fired the API answered **HTTP 504** with no brief at
+all. There was no time check before the expensive model call, so the model could start with 2 s left.
+The SDK waited up to 25 s per call **and retried once**. Masking, the pseudonym-vault writes, unmasking and
+database calls ran directly on the event loop, so one slow call froze every other request on the server
+(a likely contributor to the 16–18 minute hangs seen in the eval).
+
+**What changed.**
+- `src/hri/agent/brief_graph.py`:
+  - Before the model writes a draft, it checks the time left. If less than 12 s remain, it skips the model
+    and gives the facts-only brief straight away.
+  - Each model call gets a timeout from the **remaining** budget (draft: time left − 6 s, to leave room for
+    the fact-check; fact-check: time left − 1 s) and `max_retries=0`. If the draft call is too slow → facts
+    only; if the fact-check is too slow → F05's fail-closed path (model claims removed, review flagged).
+  - The hard deadline no longer raises. The graph now streams its state after every step; if the deadline
+    fires mid-way, `_at_deadline` builds the facts-only brief from the data already gathered (mode
+    `fallback`, review needed). If not even the data arrived, it returns mode `delayed` with a review flag.
+  - Masking + vault writes, context building and unmasking now run in worker threads (`asyncio.to_thread`),
+    so they no longer block the event loop.
+- `src/hri/llm.py`: `complete()` accepts `timeout` and `max_retries` for a single call (other callers keep the
+  old defaults).
+- `src/hri/api/app.py`: the `HTTPException(504)` branch is gone; DB reads/writes on the brief path run in
+  worker threads; a `delayed` result tries the last good cached brief, like `unavailable` does.
+- Tests (`tests/test_brief_graph.py`, 6 new): a model that hangs for 60 s → the brief returns in about 20 s
+  (under 30) as facts only with review needed; brief-path model calls carry a budget timeout and no retries;
+  too little time → the model is never called; a hang somewhere else (context building) → the hard deadline
+  builds facts from the gathered data; a hang before any data → `delayed`, not an error; no 504 in the API.
+
+**Course concept.** *Graceful degradation under a latency budget (deadline propagation)*: pass the remaining
+time down to every step, decide early, and always return the best safe answer you have. Also *async
+concurrency*: never run blocking work on the event loop.
+
+**How to see it working.** `uv run pytest -q tests/test_brief_graph.py -k "hang or deadline or time or 504"`
+(about 32 s, because one test really waits out the 20 s model timeout). `grep -n 'HTTPException(504' src/hri/api/app.py`
+→ nothing. Load: `make kill-llm`, then `docker compose run --rm app python -m load.run_load --concurrency 6 --requests 30`
+→ 30/30 within 30 s, error rate 0, then `make revive-llm`.
+
+**What still breaks it / limits.** A worker thread whose call hangs is abandoned, not killed; the real SDK
+call ends at its own timeout, but a hang inside our own DB code would keep a thread busy (the thread pool is
+finite, about 32 workers). The 12 s / 6 s margins are estimates from the old eval timings, not tuned with the
+real model tonight (no key). The load test above exercises the fallback path only; the latency of real model
+briefs under load still needs a key to measure.
