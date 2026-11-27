@@ -110,7 +110,15 @@ Without real keys you can still see exactly what would be sent: start a local fa
 `LANGFUSE_PUBLIC_KEY=pk-lf-test LANGFUSE_SECRET_KEY=sk-lf-test LANGFUSE_HOST=http://127.0.0.1:9417`, then
 `python3 work/evidence-f02/decode.py /tmp/body.bin` → 0 for every name/email, while the span names are
 present. A control `@observe()` without the flags leaks the name (count 2), which proves the check works.
-With real keys: run 3 briefs and export the traces from the Langfuse API, then grep for names.
+With real keys: run 3 briefs, export what Langfuse stored for that time window, and grep it for every
+person name and email in the database (expect 0 hits).
+(Langfuse Cloud removed `GET /api/public/traces` on 2026-11-16; use the v2/v3 endpoints. Auth is basic auth
+with the public key as user and the secret key as password, e.g. `curl -u "$LANGFUSE_PUBLIC_KEY:$LANGFUSE_SECRET_KEY" ...`
+with the keys from `.env`.)
+- Spans, generations and their metadata/IO:
+  `GET $LANGFUSE_HOST/api/public/v2/observations?fields=core,basic,usage,io,metadata&fromStartTime=<ISO>&toStartTime=<ISO>`.
+  Each row is one observation; group rows by `traceId` to get one brief's trace.
+- Scores: `GET $LANGFUSE_HOST/api/public/v3/scores` (match them to a brief by `traceId`).
 
 **What still breaks it / limits.** Someone could put text into `span_meta(...)` by hand; the helper's
 docstring forbids it, but only the metadata test on the brief path checks it. Langfuse traffic does not go
@@ -344,7 +352,15 @@ then `LANGFUSE_PUBLIC_KEY=pk-lf-test LANGFUSE_SECRET_KEY=sk-lf-test LANGFUSE_HOS
 then `python3 work/evidence-f10/decode_traces.py /tmp/b.bin` → tag sets `brief`, `brief llm`,
 `brief fallback escalated`; scores latency_ms, cost_usd, dropped_ratio (+ citation_coverage on the llm
 brief), each with its trace id; 0 PII hits. With real keys: POST /brief returns a non-null `trace_id` equal to
-`select trace_id from brief order by id desc limit 1`, and the trace shows the tags and scores.
+`select trace_id from brief order by id desc limit 1`. Check that trace through the API: its observations
+(the root `pre_meeting_brief` span carries the tags) and its scores.
+(Langfuse Cloud removed `GET /api/public/traces` on 2026-11-16; use the v2/v3 endpoints. Auth is basic auth
+with the public key as user and the secret key as password, e.g. `curl -u "$LANGFUSE_PUBLIC_KEY:$LANGFUSE_SECRET_KEY" ...`
+with the keys from `.env`.)
+- Spans, generations and their metadata/IO:
+  `GET $LANGFUSE_HOST/api/public/v2/observations?fields=core,basic,usage,io,metadata&fromStartTime=<ISO>&toStartTime=<ISO>`.
+  Each row is one observation; group rows by `traceId` to get one brief's trace.
+- Scores: `GET $LANGFUSE_HOST/api/public/v3/scores` (match them to a brief by `traceId`).
 
 **What still breaks it / limits.** Without Langfuse keys `trace_id` is null (correct, there is no trace).
 Child spans carry only the `brief` tag; the mode/escalated tags are set on the root span at the end (Langfuse
