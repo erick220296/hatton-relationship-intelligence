@@ -351,3 +351,36 @@ Child spans carry only the `brief` tag; the mode/escalated tags are set on the r
 shows the trace's tags as the union, as far as I can tell; this is not checked against the real service yet).
 Scores measure our own checks (citations, verifier drops), not ground truth: the judge eval is still the real
 quality measure.
+
+---
+
+## F03: Secrets and data stay out of the image; database and tool server on localhost only
+
+**What was wrong.** The Dockerfile ends with `COPY . .`, and there was no `.dockerignore`, so the image layers
+contained `.env` (where the API keys go), the host's `.venv`, and `.git`. Anyone who got the image got the
+secrets. Also, Postgres (5432, password `hri`) and the MCP tool server (8001, which returns *unmasked*
+relationship data) were published on every network interface, so other machines on the same Wi-Fi could
+reach them.
+
+**What changed.**
+- `.dockerignore` (new): excludes `.env*` (keeps `.env.example`), `.venv/`, `data/`, `.git/`, caches and
+  `*.egg-info`. Containers still get their settings at run time from compose `env_file: .env`, which is
+  read when the container starts and is not stored in the image.
+- `docker-compose.yml`: db and mcp ports are bound to `127.0.0.1`. The API (8000) and UI (8501) were left as
+  they were, as Boris asked (only DB and MCP).
+- `Makefile`: `make build` now also builds the one-off `app` image that `make test` uses. Before, it silently
+  skipped it (that service sits behind a compose "profile"), so `make build && make test` could test old code.
+- The running stack was rebuilt and recreated (db, mcp, api, ui). The database volume was kept: still
+  39,099 messages.
+
+**Course concept.** *Secure deployment / least exposure*: secrets are injected at run time, never baked
+into images, and internal services are not exposed to the network.
+
+**How to see it working.** `docker run --rm --entrypoint ls repo-api -a /app` → no `.env`, `.venv` or `data`.
+`docker compose ps` → `127.0.0.1:5432` and `127.0.0.1:8001`, no `0.0.0.0` for those two. `make test` passes;
+http://localhost:8501 loads.
+
+**What still breaks it / limits.** The API and UI still listen on all interfaces (by choice, so the demo can
+be shown from another device); there's no login on them. Old images built before this fix may still exist
+in local caches or registries: rebuild and remove them. `.env` must still never be committed (it is in
+`.gitignore`).

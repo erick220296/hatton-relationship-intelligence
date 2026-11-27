@@ -4,8 +4,8 @@ RUN = docker compose run --rm app
         live test eval eval-quiet eval-brief load precompute kill-llm revive-llm kill-mcp revive-mcp malformed \
         big-context reset logs
 
-build:            ## build images
-	docker compose build
+build:            ## build images (incl. the one-off `app` image used by make test)
+	docker compose --profile tools build
 up:               ## start db, mcp, api, ui
 	docker compose up -d db mcp api ui
 down:
