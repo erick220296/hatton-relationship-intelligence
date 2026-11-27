@@ -13,6 +13,7 @@ Patterns: prompt chaining with deterministic gates, tool use via MCP, reflection
 from __future__ import annotations
 
 import asyncio
+import functools
 import re
 import time
 from typing import Any, TypedDict
@@ -26,6 +27,7 @@ from hri.agent.prompts import (BRIEF_SCHEMA, BRIEF_SYSTEM, BRIEF_USER, SECTIONS,
 from hri.agent.tools import ToolUnavailable, mcp_tools
 from hri.config.settings import settings, vertical
 from hri.llm import LLMUnavailable, complete_json
+from hri.obs import tracing
 from hri.obs.tracing import observe
 from hri.privacy.masker import masker, unmask
 
@@ -73,9 +75,28 @@ def _timed(name):
     return deco
 
 
+# Langfuse is a third party: node spans never capture state (raw mail, evidence, unmasked brief).
+# They carry only these scalar fields plus the size of every list/dict a node returns.
+_SPAN_SCALARS = {"mode", "person_id", "attempts", "cost_usd"}
+
+
+def _span_counts(fn):
+    @functools.wraps(fn)
+    async def wrapper(state: BriefState):
+        out = await fn(state)
+        meta = {k: v for k, v in out.items() if k in _SPAN_SCALARS}
+        meta.update({f"n_{k}": len(v) for k, v in out.items() if isinstance(v, (list, dict)) and k != "timings"})
+        if isinstance(out.get("context"), dict):
+            meta["context_stats"] = out["context"].get("stats")
+        tracing.span_meta(**meta)
+        return out
+    return wrapper
+
+
 # ---------------------------------------------------------------- nodes
 @_timed("resolve")
-@observe(name="resolve")
+@observe(name="resolve", capture_input=False, capture_output=False)
+@_span_counts
 async def resolve(s: BriefState) -> dict:
     req = s["request"]
     try:
@@ -113,7 +134,8 @@ async def resolve(s: BriefState) -> dict:
 
 
 @_timed("gather")
-@observe(name="gather")
+@observe(name="gather", capture_input=False, capture_output=False)
+@_span_counts
 async def gather(s: BriefState) -> dict:
     pid = s["person_id"]
     try:
@@ -136,7 +158,8 @@ async def gather(s: BriefState) -> dict:
 
 
 @_timed("build_context")
-@observe(name="build_context")
+@observe(name="build_context", capture_input=False, capture_output=False)
+@_span_counts
 async def build(s: BriefState) -> dict:
     d = s["data"]
     withheld = []
@@ -174,7 +197,8 @@ async def build(s: BriefState) -> dict:
 
 
 @_timed("generate")
-@observe(name="generate")
+@observe(name="generate", capture_input=False, capture_output=False)
+@_span_counts
 async def generate(s: BriefState) -> dict:
     mk = masker()
     prof = s["data"]["profile"]
@@ -198,7 +222,8 @@ async def generate(s: BriefState) -> dict:
 
 
 @_timed("verify")
-@observe(name="verify")
+@observe(name="verify", capture_input=False, capture_output=False)
+@_span_counts
 async def verify(s: BriefState) -> dict:
     valid = set(s["context"]["message_ids"]) | {"PROFILE"}
     claims, dropped = [], []
@@ -246,7 +271,8 @@ def _after_verify(s: BriefState) -> str:
 
 
 @_timed("finalize")
-@observe(name="finalize")
+@observe(name="finalize", capture_input=False, capture_output=False)
+@_span_counts
 async def finalize(s: BriefState) -> dict:
     sections: dict[str, list] = {sec: [] for sec in SECTIONS}
     for c in s["verified"]["claims"]:
@@ -260,7 +286,8 @@ async def finalize(s: BriefState) -> dict:
 
 
 @_timed("fallback")
-@observe(name="fallback")
+@observe(name="fallback", capture_input=False, capture_output=False)
+@_span_counts
 async def facts_only(s: BriefState) -> dict:
     brief = fallback.facts_only(s["data"], s.get("partner_email"), s.get("meeting"))
     if s.get("context"):   # what the context budgeter kept/compressed/omitted, even when the model is down
@@ -302,7 +329,7 @@ def build_graph(checkpointer=None):
 _graph = None
 
 
-@observe(name="pre_meeting_brief")
+@observe(name="pre_meeting_brief", capture_input=False, capture_output=False)
 async def run_brief(request: dict[str, Any], run_id: str, checkpointer=None) -> dict:
     global _graph
     if _graph is None or checkpointer is not None:
@@ -311,8 +338,12 @@ async def run_brief(request: dict[str, Any], run_id: str, checkpointer=None) -> 
     state: BriefState = {"request": request, "t0": t0, "warnings": [], "cost_usd": 0.0, "timings": {}}
     cfg = {"configurable": {"thread_id": run_id}}
     out = await asyncio.wait_for(_graph.ainvoke(state, cfg), timeout=settings().brief_timeout_s + 4)
-    return {"mode": out.get("mode", "llm"), "brief": out.get("brief"), "candidates": out.get("candidates"),
-            "warnings": out.get("warnings", []), "cost_usd": round(out.get("cost_usd", 0.0), 6),
-            "latency_ms": int((time.perf_counter() - t0) * 1000), "timings": out.get("timings", {}),
-            "person_id": out.get("person_id"), "partner_email": out.get("partner_email"),
-            "meeting_id": (out.get("meeting") or {}).get("id")}
+    res = {"mode": out.get("mode", "llm"), "brief": out.get("brief"), "candidates": out.get("candidates"),
+           "warnings": out.get("warnings", []), "cost_usd": round(out.get("cost_usd", 0.0), 6),
+           "latency_ms": int((time.perf_counter() - t0) * 1000), "timings": out.get("timings", {}),
+           "person_id": out.get("person_id"), "partner_email": out.get("partner_email"),
+           "meeting_id": (out.get("meeting") or {}).get("id")}
+    tracing.span_meta(mode=res["mode"], person_id=res["person_id"], meeting_id=res["meeting_id"],
+                      latency_ms=res["latency_ms"], cost_usd=res["cost_usd"], timings=res["timings"],
+                      n_warnings=len(res["warnings"]), n_dropped=len(out.get("dropped") or []))
+    return res

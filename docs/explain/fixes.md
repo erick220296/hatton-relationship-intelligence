@@ -76,3 +76,44 @@ hallucinate.
 don't hide our own bugs. The live feed stops extracting at the first model error (graph stays current;
 extraction catches up next run). If the model returns valid JSON with the wrong shape, the brief may
 still fail.
+
+---
+
+## F02: Langfuse receives only masked text and counts
+
+**What was wrong.** Langfuse (tracing/observability) is a third-party service. Every step of the brief
+agent was decorated with `@observe`, which by default **records the function's input and output**.
+For our steps that is the whole agent state: raw emails, the evidence map and the unmasked brief. The
+moment Langfuse keys went into `.env`, real names and email text would have left the region, breaking
+the rule "PII masked before any third-party service". (The model calls were already safe: they send
+masked text.)
+
+**What changed.**
+- `src/hri/agent/brief_graph.py`: all 8 `@observe` decorators now have `capture_input=False,
+  capture_output=False`. A small `_span_counts` wrapper attaches only safe metadata to each step's span:
+  `mode`, `person_id`, `attempts`, `cost_usd`, the *size* of each list/dict the step returned (e.g.
+  `n_evidence`, `n_withheld`) and the context-budget numbers. The top-level `pre_meeting_brief` span gets
+  mode, ids, latency, cost, timings and counts.
+- `src/hri/obs/tracing.py`: new `span_meta()` helper (wraps `update_current_span(metadata=...)`, never
+  breaks a brief if Langfuse fails). `record_generation` is unchanged: it still sends the *masked* prompt
+  and output, which is useful for debugging and safe.
+- Tests: `tests/test_no_outbound.py::test_observe_never_captures_io` reads every Python file in `src/`
+  and fails if any `@observe` is missing either flag. `tests/test_brief_graph.py::test_trace_metadata_carries_no_mail_text`
+  runs a brief and checks that the span metadata contains no name, email, organisation or message text.
+
+**Course concept.** *Guardrails and data governance / privacy by design*: control what crosses the trust
+boundary, and turn the rule into an automated test so a future edit cannot silently break it.
+
+**How to see it working.** `uv run pytest -q tests/test_no_outbound.py tests/test_brief_graph.py`.
+Without real keys you can still see exactly what would be sent: start a local fake Langfuse
+(`python3 work/evidence-f02/sink.py /tmp/body.bin`), run the tests with
+`LANGFUSE_PUBLIC_KEY=pk-lf-test LANGFUSE_SECRET_KEY=sk-lf-test LANGFUSE_HOST=http://127.0.0.1:9417`, then
+`python3 work/evidence-f02/decode.py /tmp/body.bin` → 0 for every name/email, while the span names are
+present. A control `@observe()` without the flags leaks the name (count 2), which proves the check works.
+With real keys: run 3 briefs and export the traces from the Langfuse API, then grep for names.
+
+**What still breaks it / limits.** Someone could put text into `span_meta(...)` by hand; the helper's
+docstring forbids it, but only the metadata test on the brief path checks it. Langfuse traffic does not go
+through our egress allowlist/audit (`privacy/egress.py`), so it is not in the `egress_audit` table.
+The masked prompts sent by `record_generation` contain pseudonyms (`PERSON_1a2b3c`), not real names;
+masking quality is the remaining risk (see test_masking.py).

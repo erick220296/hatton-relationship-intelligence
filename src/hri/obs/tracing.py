@@ -46,6 +46,17 @@ def record_generation(*, name, model, input_text, output_text, tokens_in, tokens
         log.warning("langfuse generation record failed: %s", e)
 
 
+def span_meta(**kw):
+    """Attach ids/counts/timings to the current span. Callers must pass no text from mail or briefs."""
+    lf = get_client()
+    if not lf:
+        return
+    try:
+        lf.update_current_span(metadata=kw)
+    except Exception as e:  # observability must never break a brief
+        log.warning("langfuse span update failed: %s", e)
+
+
 def update_trace(**kw):
     lf = get_client()
     if lf:

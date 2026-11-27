@@ -66,3 +66,16 @@ async def test_tools_down_returns_unavailable_without_model_call(brief_env):
     res = await bg.run_brief(REQ, "t-tools")
     assert res["mode"] == "unavailable"
     assert brief_env.calls == []
+
+
+async def test_trace_metadata_carries_no_mail_text(brief_env, monkeypatch):
+    """F02: what the node spans send to Langfuse is ids, counts and timings, never names, emails or bodies."""
+    import json
+    from hri.obs import tracing
+    sent = []
+    monkeypatch.setattr(tracing, "span_meta", lambda **kw: sent.append(kw))
+    await bg.run_brief(REQ, "t-trace")
+    assert len(sent) >= 7                     # resolve, gather, build_context, generate, verify, finalize, run
+    blob = json.dumps(sent, default=str)
+    for secret in ("Guy Cameron", "Lucy Allan", "guy.cameron@", "lucy.allan@", "Graham Endowment", "IC memo"):
+        assert secret not in blob, secret
