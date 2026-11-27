@@ -11,8 +11,8 @@ Owner: Commercial Lead (Yasiru Lelwala). All costs come from `docs/cost_model.md
 ## 2. Two economics, priced separately (client brief §6)
 | | What it is | Our cost | Proposed price |
 |---|---|---|---|
-| **One-off onboarding** | Backfill of ~40,000 emails (extraction + local embedding), setup, warmth calibration with partners | $1.08 AI cost (measured) + setup labour | Backfill AI cost passed through **at cost**; setup quoted separately as a fixed fee |
-| **Monthly service** | Running the system: server in region, AI per brief, observability, support | $221/month normal, $223 peak (measured) | See tiers below |
+| **One-off onboarding** | Backfill of ~40,000 emails (extraction + local embedding), setup, warmth calibration with partners | $1.09 AI cost (measured; estimated $1.13 before running) + setup labour | Backfill AI cost passed through **at cost**; setup quoted separately as a fixed fee |
+| **Monthly service** | Running the system: server in region, AI per brief, observability, support | $222/month normal, $225 peak (measured) | See tiers below |
 
 ## 3. Tiers (all within the $900/month budget)
 | Tier | Monthly fee | Includes | Margin at normal cost |
@@ -26,7 +26,7 @@ Owner: Commercial Lead (Yasiru Lelwala). All costs come from `docs/cost_model.md
 Why tiers: they let Hatton choose how much control it wants over where data lives (the client's top constraint) without changing the system. The software is identical; only the hosting and service level differ.
 
 ## 4. Margin logic
-- **Cost is ~97% fixed** (one in-region server + observability = $214 of the $221). AI is ~$7/month at normal volume.
+- **Cost is ~97% fixed** (one in-region server + observability = $214 of the $222). AI is ~$8/month at normal volume.
 - So margin barely moves with volume: at 3× peak (45 briefs/day) cost rises only to $239.
 - **Every price point covers the measured cost per brief at the client's stated volume** (the course's pass/fail rule): $1.32–$2.37 charged per brief vs $0.58 all-in cost per brief.
 - Overage: above 600 briefs/month, each extra brief costs us ~$0.02 in AI. We would not charge overage within the budget.

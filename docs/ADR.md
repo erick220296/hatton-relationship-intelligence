@@ -94,7 +94,7 @@ The full map of patterns to code is in §15.
 | Commitment extraction | `claude-haiku-5-5` (Batch) | High volume, structured output, cheapest tier |
 | Brief generation | `claude-sonnet-5-5`, effort low | Faithfulness to sources and terse writing; fits the 30 s budget |
 | In-pipeline verifier | `claude-haiku-5-5` | Fast claim-by-claim check |
-| Eval judge (offline) | `claude-sonnet-5-5` | A different model and prompt from the *verifier*. **Limitation:** it is the same model as the *writer*, so a panel can fairly raise self-preference bias. The next eval run should use a different model for the judge (e.g. Opus 5.5); see §16. |
+| Eval judge (offline) | `claude-opus-5-5` (since fix B6; was `claude-sonnet-5-5`) | A different model and prompt from the *verifier*. **Limitation:** it is the same model as the *writer*, so a panel can fairly raise self-preference bias. The next eval run should use a different model for the judge (e.g. Opus 5.5); see §16. |
 
 Structured outputs (JSON schema) are used everywhere, so the gates parse reliably. Model IDs and prices live in config (`prices.yaml`, with source and date).
 
@@ -198,8 +198,8 @@ Before the build, the team wrote a fuller target architecture (v2.2). Where the 
 | **Human-in-the-loop** | Ambiguous names return candidates; "Needs partner review" queue (F07/F08) | The client must stay in authority; humans review what the system couldn't verify. |
 
 ## 16. Open items (honest status, 27 Nov)
-- **Needs a funded model key** (not yet available): commitment extraction on the rebuilt database (~$1), the brief-eval re-run on the fixed code (the last run, 25 Nov, passed 10/35 cases with 58% of claims grounded, partly due to an eval bug fixed since), and the load test with real model calls (p95/p99 from Langfuse).
-- **The eval judge** should move to a model different from the writer for the re-run.
+- **Resolved 27 Nov with a funded key (≈$3.40 spent):** commitment extraction ($1.09 vs $1.13 estimated, 15,618 threads, 0 errors); brief eval with an independent Opus judge (21/35 strict passes, 95.1% of claims grounded, 0 hangs; before fixes 10/35, 58%, 7 hangs); load test with the real model at 6 and 15 concurrent (30/30 within 30 s each, p95 16.4 s / 14.6 s, 0 errors). **Still open:** about 5% of claims (14/286) are judged unsupported, so the strict zero-unsupported bar is met by 60% of briefs; causes and fixes are in `work/eval_paid_runs.md`. Load-test samples are n=30 per run, so p99 is effectively the slowest request.
+- **The eval judge** now uses Opus 5.5, a different model from the Sonnet writer (fix B6).
 - **Masker:** the dictionary loads once per API process, so names added by live ingest are masked only after a restart (runbook), and very short organisation names are skipped. Planned fix: reload after ingest, case-insensitive matching.
 - **Exposure:** ports and default passwords are fine on a laptop but must sit behind authentication before any public deployment.
 - **Small doc/code mismatches found in review (27 Nov), not yet changed in code:** `pe.yaml` describes quiet as measured from the last *inbound* message, but the code counts an inbound message *or* a meeting (the code's rule is the intended one: a meeting is two-way contact). `upcoming_meetings` is described as "confirmed" meetings but does not filter cancelled ones; cancelled meetings are flagged with a warning in the brief instead.

@@ -187,9 +187,9 @@ make load       # load test → latency p50/p95/p99 and cost
 | Emails loaded into the graph | 38,299 (full backfill; 3 malformed quarantined) | `docs/evidence/backfill_report.json` |
 | Quiet detection: found the relationships we cooled | **93% recall** (56/60), 77% precision; dead deals 25/25 | `docs/evidence/quiet_eval.json` |
 | Backfill extraction cost | Estimated $0.89, actual **$1.08** (14,818 threads) | `backfill_report.json` |
-| Cost per brief | About **$0.017** | `docs/evidence/brief_eval.json` |
-| Brief latency (AI path) | p50 11.0 s, p95 18.3 s | `brief_eval.json` |
-| Brief accuracy | ⚠️ Needs work: 10/35 eval cases pass, 58% of claims grounded | `docs/evidence/brief_eval.md` |
+| Cost per brief | About **$0.020** (n=87 real briefs, 27 Nov) | `docs/cost_model.md`, `docs/evidence/brief_eval.json`, `load_c*.json` |
+| Brief latency (AI path) | 15 concurrent: p50 11.3 s, p95 14.6 s, 30/30 < 30 s | `docs/evidence/load_c15.json` |
+| Brief accuracy | 21/35 strict passes, 95.1% of claims grounded (Opus judge); before fixes 10/35, 58% (`brief_eval_2026-11-25.json`) | `docs/evidence/brief_eval.md` |
 
 ### Still to do
 - Improve brief accuracy and re-run `make eval` (the prompt fixes are in but haven't been re-measured)
