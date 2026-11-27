@@ -455,3 +455,23 @@ here (Ash's earlier probe and the NER step cover part of that). There are no non
 synthetic corpus, so that case is not tested. Phone numbers and street addresses are covered by the masker's
 own unit tests, not by this scan. The verify payload is built from a synthetic draft (one claim per cited
 message), not a real model draft.
+
+---
+
+## Demo prep: `make clear-test-briefs`
+
+**Why.** Test and load runs left more than 130 briefs in the review queue. On stage the "Needs partner review"
+tab should show only what the demo creates.
+
+**What changed.** `src/hri/ops/clear_test_briefs.py` (new) and two Makefile targets. It rejects every queued
+brief through **the same code path as a partner clicking Reject** (`review_decide`): status `rejected`, plus a
+`review_log` row with reviewer `system` and the note "test run, cleared before demo". **Nothing is deleted**,
+so the audit trail shows honestly what was cleared and when. `make clear-test-briefs-dry` only counts.
+Test: `tests/test_clear_test_briefs.py` (Docker): a dry run changes nothing; a real run rejects and logs
+without deleting; a second run skips it.
+
+**Course concept.** *Auditability*: even housekeeping goes through the logged path.
+
+**How to use.** Just before the pitch: `make clear-test-briefs-dry` (count), then `make clear-test-briefs`.
+Not run yet. **Limit:** it clears everything queued at that moment, including real flags, so run it only
+before the demo.

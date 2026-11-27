@@ -2,7 +2,7 @@ RUN = docker compose run --rm app
 
 .PHONY: up down build corpus backfill-load backfill-embed backfill-edges backfill-estimate backfill-extract backfill \
         live test eval eval-quiet eval-brief load precompute kill-llm revive-llm kill-mcp revive-mcp malformed \
-        big-context reset logs
+        big-context clear-test-briefs clear-test-briefs-dry reset logs
 
 build:            ## build images (incl. the one-off `app` image used by make test)
 	docker compose --profile tools build
@@ -62,5 +62,10 @@ revive-mcp:
 	docker compose start mcp
 malformed:        ## feed malformed records through ingest
 	$(RUN) python -m hri.ingest.live_feed --file evals/cases/malformed.jsonl --no-extract
+clear-test-briefs: ## demo prep: reject every queued review item as "test run" (logged in review_log, nothing deleted)
+	$(RUN) python -m hri.ops.clear_test_briefs
+clear-test-briefs-dry: ## count what clear-test-briefs would clear
+	$(RUN) python -m hri.ops.clear_test_briefs --dry-run
+
 big-context:      ## brief for the heaviest relationship (exceeds the context budget)
 	$(RUN) python -m evals.big_context
