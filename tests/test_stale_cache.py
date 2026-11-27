@@ -59,3 +59,23 @@ def test_normal_cache_still_serves_only_verified_briefs(stored):
     store("fallback", "fb")
     assert _cached(person_id=pid) is None or _cached(person_id=pid)["mode"] == "llm"
     assert _cached(person_id=pid, any_mode=True)["content"] == {"tag": "fb"}
+
+
+@pytest.mark.db
+def test_stale_brief_without_review_field_is_flagged(tools_down, stored):
+    """B2: a cached brief from before F05 has no `review`; serve it flagged, never as if it were checked."""
+    pid, store = stored
+    store("llm", "pre-F05")                      # content has no "review" key
+    body = client.post("/brief", json={"person_id": pid}).json()
+    assert body["mode"] == "stale_cache"
+    assert body["review"] == {"needed": True, "reasons": ["brief predates fact-check fix"]}
+
+
+@pytest.mark.db
+def test_stale_brief_keeps_its_own_review_flag(tools_down, stored):
+    pid, store = stored
+    from hri import db
+    bid = store("fallback", "has-review")
+    db.q("UPDATE brief SET content = content || %s::jsonb WHERE id = %s",
+         ('{"review": {"needed": false, "reasons": []}}', bid))
+    assert client.post("/brief", json={"person_id": pid}).json()["review"] == {"needed": False, "reasons": []}

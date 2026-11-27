@@ -109,7 +109,9 @@ async def brief(req: BriefRequest, x_hri_run_type: str | None = Header(default=N
             age_h = (datetime.now(timezone.utc) - c["created_at"]).total_seconds() / 3600
             age = f"{age_h * 60:.0f} min" if age_h < 1 else f"{age_h:.1f} h" if age_h < 48 else f"{age_h / 24:.0f} days"
             kind = "verified brief" if c["mode"] == "llm" else "facts-only brief"
-            res.update(brief=c["content"], mode="stale_cache", review=c["content"].get("review"),
+            review = c["content"].get("review") or {   # stored before F05 added review flags
+                "needed": True, "reasons": ["brief predates fact-check fix"]}
+            res.update(brief=c["content"], mode="stale_cache", review=review,
                        brief_id=c["id"], stale_mode=c["mode"], person_id=c["person_id"])
             res["warnings"].append(f"Showing the last good brief from {c['created_at']:%Y-%m-%d %H:%M} "
                                    f"({age} old, {kind}): live relationship data is unavailable, so it may be out of date.")

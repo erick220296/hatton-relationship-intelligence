@@ -503,3 +503,25 @@ unavailable (data service down)"; brief jamie.tucker → stale brief, clean warn
 
 **What still breaks it / limits.** Other API calls (partners, stats, quiet list) still show a short error line
 if the whole API is down, which is correct, because then nothing works.
+
+---
+
+## B2: Old cached briefs are never shown as if they were fact-checked
+
+**What was wrong.** Briefs saved before F05 have no `review` field. When the data service was down, the stale
+path could serve one of them with no review flag at all, so it looked as trustworthy as a checked brief.
+
+**What changed.** `src/hri/api/app.py`: on the stale path, a cached brief without `review` is served with
+`review: {needed: true, reasons: ["brief predates fact-check fix"]}`, so the UI shows the red "Flagged for
+partner review" badge. A brief that has its own review flag keeps it. Tests (`tests/test_stale_cache.py`,
++2, Docker): a brief without the field gets flagged; a brief with the field keeps its own flag.
+
+**Course concept.** *Fail closed on missing evidence*: if we can't tell whether something was checked, treat it
+as unchecked.
+
+**How to see it working.** `docker compose run --rm app pytest -q tests/test_stale_cache.py` (live: restart the
+api once, `make kill-mcp`, brief someone whose last brief is old).
+
+**What still breaks it / limits.** The normal "prepared earlier" cache (meeting briefs, not fresh) serves only
+verified `llm` briefs and does not add this flag; there are no pre-F05 `llm` briefs in the local database, but a
+database with some would need the same rule there.
