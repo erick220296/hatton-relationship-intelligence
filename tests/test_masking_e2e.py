@@ -6,14 +6,13 @@ would leave the region, without calling any model. Each payload is scanned for e
 email and organisation name in the database. Negative control: the same with masking switched off must
 find leaks, which proves the scan can see them.
 
-Writes docs/evidence/masking_leak.json.
+Writes docs/evidence/masking_leak.json (deterministic: no timestamp, so re-runs leave git clean).
 """
 from __future__ import annotations
 
 import json
 import re
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -116,7 +115,6 @@ async def test_real_payloads_contain_no_names_emails_or_orgs():
     control = await test_negative_control_masking_off_finds_leaks(_return=True)
     EVIDENCE.parent.mkdir(parents=True, exist_ok=True)
     EVIDENCE.write_text(json.dumps({
-        "run_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "what": "exact model payloads (generate + verify) rebuilt for real contacts, model call replaced by a recorder",
         "contacts": len(cases), "payloads": payloads, "identifiers_checked": checked, "leaks": leaks,
         "f12_assert_masked_blocked": f12_blocked, "negative_control": control, "per_contact": rows}, indent=1))
