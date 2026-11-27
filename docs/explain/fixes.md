@@ -38,3 +38,41 @@ agent's control flow, guardrails and fallbacks deterministically, without cost a
 **What still breaks it / limits.** The stub proves the *logic* around the model, not the *quality* of
 real model output; that still needs the real model and the brief eval (`make eval-brief`). The fake data
 is tiny, so the context-budget squeeze on very long histories is not exercised here.
+
+---
+
+## F01: Any model error gives the facts-only brief, never HTTP 500
+
+**What was wrong.** `llm.complete` only turned four kinds of error (network, timeout, 5xx, rate limit)
+into `LLMUnavailable`, the signal the agent uses to switch to the facts-only brief. Everything else
+escaped and crashed the request with HTTP 500. With no API key in `.env` (our situation tonight) the SDK
+raised `TypeError: Could not resolve authentication method`, so **every** brief failed. A wrong model name
+(404), a bad key (401/403), a rejected request (400), a blocked egress host, or a failed egress-audit
+write did the same. The live-feed extraction loop crashed on the same errors.
+
+**What changed.**
+- `src/hri/llm.py`: an empty `ANTHROPIC_API_KEY` is treated like the kill switch (no client is even
+  built). All SDK errors (`anthropic.APIError` and its subclasses), `TypeError` from auth resolution,
+  `EgressBlocked` and database errors from the egress audit now become `LLMUnavailable`. The brief's
+  generate and verify steps and the live feed already catch `LLMUnavailable`, so they degrade instead of
+  crashing.
+- `src/hri/agent/brief_graph.py`: the facts-only brief now also carries `context_stats` (how many threads
+  were kept in full, as index lines, or omitted), so the "exceed the context" demo works without a model.
+- `tests/test_llm_errors.py` (new): 14 tests: empty key; 11 error types (401, 403, 400, 404, 429, 500,
+  timeout, connection, TypeError, EgressBlocked, audit DB error) each map to `LLMUnavailable`; a brief
+  run through the real `llm.complete_json` with no key returns mode `fallback`; a cancelled meeting keeps
+  its CANCELLED warning in the fallback brief.
+
+**Course concept.** *Graceful degradation* (fail soft): when a dependency fails, give a smaller but
+correct answer instead of an error. The facts-only brief is built by code from the graph, so it cannot
+hallucinate.
+
+**How to see it working.** With `ANTHROPIC_API_KEY=` empty: `docker compose restart api`, then
+`curl -s -X POST localhost:8000/brief -H 'content-type: application/json' -d '{"query":"jamie.tucker@wrightco.example","fresh":true}'`
+→ HTTP 200, `"mode":"fallback"`, warning "Language model unavailable (no model API key configured)".
+`make big-context` → exit 0 and prints threads full/indexed/dropped. `uv run pytest -q tests/test_llm_errors.py`.
+
+**What still breaks it / limits.** A bug in *our* code (not the model) still gives a 500, on purpose: we
+don't hide our own bugs. The live feed stops extracting at the first model error (graph stays current;
+extraction catches up next run). If the model returns valid JSON with the wrong shape, the brief may
+still fail.

@@ -56,13 +56,14 @@ GOOD_DRAFT = {
 class FakeTools:
     """Stands in for hri.agent.tools.MCPTools. `down=True` simulates the MCP server being unreachable."""
 
-    def __init__(self, threads):
+    def __init__(self, threads, meeting):
         self.threads = threads
+        self.meeting = meeting
 
     async def call(self, name, **args):
         return {
             "find_person": lambda: [{"person_id": 7, "name": PROFILE["name"], "email": PROFILE["email"], "rank": 0}],
-            "get_meeting": lambda: copy.deepcopy(MEETING),
+            "get_meeting": lambda: copy.deepcopy(self.meeting),
             "get_relationship": lambda: copy.deepcopy(PROFILE),
             "get_recent_threads": lambda: copy.deepcopy(self.threads),
             "get_commitments": lambda: copy.deepcopy(COMMITMENTS),
@@ -99,7 +100,8 @@ class StubModel:
 @pytest.fixture
 def brief_env(monkeypatch):
     """Brief graph with a stubbed model, fake MCP tools and an in-memory masker. Returns the StubModel;
-    set `env.tools_down = True` to make the MCP server unreachable."""
+    set `env.tools_down = True` to make the MCP server unreachable;
+    edit `env.threads` / `env.meeting` to change what the tools return."""
     from hri.agent import brief_graph as bg
     from hri.agent.tools import ToolUnavailable
     from hri.privacy import masker as masker_mod
@@ -112,12 +114,13 @@ def brief_env(monkeypatch):
     stub = StubModel()
     stub.tools_down = False
     stub.threads = copy.deepcopy(THREADS)
+    stub.meeting = copy.deepcopy(MEETING)
 
     @asynccontextmanager
     async def fake_mcp_tools(url=None):
         if stub.tools_down:
             raise ToolUnavailable("MCP server unreachable (test)")
-        yield FakeTools(stub.threads)
+        yield FakeTools(stub.threads, stub.meeting)
 
     monkeypatch.setattr(bg, "mcp_tools", fake_mcp_tools)
     monkeypatch.setattr(bg, "complete_json", stub)

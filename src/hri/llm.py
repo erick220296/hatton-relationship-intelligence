@@ -13,10 +13,11 @@ from dataclasses import dataclass
 from functools import lru_cache
 
 import anthropic
+import psycopg
 
 from hri.config.settings import cost_usd, kill_switch, settings
 from hri.obs import tracing
-from hri.privacy.egress import egress_client, purpose_var
+from hri.privacy.egress import EgressBlocked, egress_client, purpose_var
 
 
 class LLMUnavailable(RuntimeError):
@@ -50,6 +51,8 @@ def complete(*, model: str, system: str, user: str, purpose: str, max_tokens: in
              json_schema: dict | None = None, effort: str | None = "low") -> LLMResult:
     if kill_switch():
         raise LLMUnavailable("LLM provider unavailable (kill switch)")
+    if not settings().anthropic_api_key:
+        raise LLMUnavailable("no model API key configured")
     token = purpose_var.set(purpose)
     t0 = time.perf_counter()
     try:
@@ -63,9 +66,10 @@ def complete(*, model: str, system: str, user: str, purpose: str, max_tokens: in
         if oc:
             kwargs["output_config"] = oc
         resp = client().messages.create(**kwargs)
-    except (anthropic.APIConnectionError, anthropic.APITimeoutError, anthropic.InternalServerError,
-            anthropic.RateLimitError) as e:
-        raise LLMUnavailable(str(e)) from e
+    except anthropic.APIError as e:   # every SDK error: network, timeout, 5xx, 429, 400/401/403/404 ...
+        raise LLMUnavailable(f"{type(e).__name__}: {e}") from e
+    except (TypeError, EgressBlocked, psycopg.Error) as e:   # auth resolution, blocked host, egress-audit write
+        raise LLMUnavailable(f"{type(e).__name__}: {e}") from e
     finally:
         purpose_var.reset(token)
     if resp.stop_reason == "refusal":

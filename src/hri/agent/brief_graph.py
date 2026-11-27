@@ -262,7 +262,10 @@ async def finalize(s: BriefState) -> dict:
 @_timed("fallback")
 @observe(name="fallback")
 async def facts_only(s: BriefState) -> dict:
-    return {"brief": fallback.facts_only(s["data"], s.get("partner_email"), s.get("meeting")), "mode": "fallback"}
+    brief = fallback.facts_only(s["data"], s.get("partner_email"), s.get("meeting"))
+    if s.get("context"):   # what the context budgeter kept/compressed/omitted, even when the model is down
+        brief["context_stats"] = s["context"]["stats"]
+    return {"brief": brief, "mode": "fallback"}
 
 
 # ---------------------------------------------------------------- graph
