@@ -420,3 +420,38 @@ own rules cover those. It catches full names, not a first or last name alone (to
 words). Because it is case-insensitive while the masker is not, an all-caps name in an email ("JAMIE
 TUCKER") is blocked here (fail closed: facts-only brief) rather than masked. The Batch API extraction
 path (`batch_client`) does not go through `complete()`, so it is not checked here.
+
+---
+
+## F11: Masking proven end to end on the real payloads
+
+**What was wrong.** We had unit tests for the masker on sample text, but no proof on the *actual* prompts the
+agent would send for real contacts. With no API key, the egress log is empty, so it could not serve as
+evidence either.
+
+**What changed.**
+- `tests/test_masking_e2e.py` (new, needs the Docker stack). For **24 real contacts**, chosen from the data:
+  warm, quiet, cooling, new, the heaviest histories, shared names, the injection case, a meeting and a
+  cancelled meeting. It runs the agent's own steps (resolve → gather → build_context → generate → verify)
+  with the model call replaced by a *recorder*. That captures the exact `system + user` text of both model
+  calls (**48 payloads**) without calling any model. Every payload is scanned for **every** person full name and
+  email in the database (2,840 identifiers) and every organisation name (385). Names, emails and multi-word
+  orgs match in any letter case; one-word orgs (surnames such as "Bell") match exact case, otherwise ordinary
+  words like "young" would count as leaks. Each payload also has to pass the F12 `assert_masked` check.
+- **Negative control:** the same pipeline with masking switched off must find leaks (it finds 435 across 5
+  contacts). This proves the scan really can see a leak, so "0 leaks" means something.
+- Result, written to `docs/evidence/masking_leak.json`: 24 contacts, 48 payloads, **0 leaks**, 0 blocked by
+  F12, negative control 435 leaks.
+
+**Course concept.** *Evaluation with controls*: a test is only evidence if it can fail, so run it on the real
+inputs and prove it detects the thing it looks for (a negative control).
+
+**How to see it working.** `make build && make test` (this test runs in Docker), or just this test:
+`docker compose run --rm app pytest -q tests/test_masking_e2e.py`, then open `docs/evidence/masking_leak.json`.
+
+**What still breaks it / limits.** It checks people and organisations we *know*. A name that appears only
+inside an email body and was never found by ingest-time NER is not in the dictionary, so it is not checked
+here (Ash's earlier probe and the NER step cover part of that). There are no non-English names in the
+synthetic corpus, so that case is not tested. Phone numbers and street addresses are covered by the masker's
+own unit tests, not by this scan. The verify payload is built from a synthetic draft (one claim per cited
+message), not a real model draft.
