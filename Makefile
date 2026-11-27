@@ -38,8 +38,8 @@ live:             ## replay post-backfill mail (keep the graph current)
 precompute:       ## prepare briefs for the next day's meetings
 	curl -s -X POST "http://localhost:8000/precompute?days=1" | python3 -m json.tool
 
-test:
-	$(RUN) pytest -q
+test:             ## never sends traces to real Langfuse: keys blanked here and in tests/conftest.py
+	docker compose run --rm -e LANGFUSE_PUBLIC_KEY= -e LANGFUSE_SECRET_KEY= app pytest -q
 
 eval-quiet:
 	$(RUN) python -m evals.run_quiet_eval

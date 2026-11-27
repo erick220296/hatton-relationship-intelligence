@@ -541,3 +541,32 @@ created, through the review log (no deletes).
 clear set and is rejected via `review_log`.
 
 **How to use.** `make clear-test-briefs-dry`, then `make clear-test-briefs` just before the pitch (not run yet).
+
+---
+
+## B4: Test runs never send traces to the real Langfuse
+
+**What was wrong.** Real Langfuse keys are now in `repo/.env`, and the Docker test container loads `.env`.
+So every `make test` run sent traces from the fake-model tests to the real dashboard, mixing fake briefs into
+the latency and score charts we show to the panel.
+
+**What changed.**
+- `tests/conftest.py`: before any project code is imported, it blanks `LANGFUSE_PUBLIC_KEY` and
+  `LANGFUSE_SECRET_KEY`, so tracing stays switched off. The one exception is an explicit local fake-Langfuse
+  run (`LANGFUSE_HOST` on `127.0.0.1`/`localhost`, used for the F02/F10 evidence), which keeps its fake keys.
+- `Makefile`: `make test` also passes the two keys as empty to the test container (a second, independent guard).
+- `tests/test_no_real_langfuse.py` (new): during tests the keys are blank, tracing is off and there is no
+  Langfuse client. (It skips itself during an explicit local-sink run.)
+
+**Course concept.** *Keep test and production signals apart*: evaluation data you show must come from real runs,
+and tests must not have side effects on shared services.
+
+**How to see it working.** `make test` → passes, including `test_no_real_langfuse.py`. Even without the
+Makefile guard, `docker compose run --rm app pytest -q tests/test_no_real_langfuse.py` passes, although the
+container's environment has the real keys. Control: `docker compose run --rm --no-deps app python -c "from hri.obs import tracing; print(tracing._enabled)"`
+prints `True` (outside pytest, tracing is on, as it should be for the API).
+
+**What still breaks it / limits.** Scripts run outside pytest with the `app` container (for example
+`make eval-brief`, `make load`, `make big-context`) do trace to real Langfuse. That is intended for real
+evaluation runs, and load-test briefs are tagged `load-test`. Traces sent by earlier test runs are already in
+the dashboard; filter them out by time or by the absence of real cost.

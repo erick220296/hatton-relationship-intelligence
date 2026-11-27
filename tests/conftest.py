@@ -1,9 +1,19 @@
 import copy
 import os
+import re
 import threading
 from contextlib import asynccontextmanager
 
 import pytest
+
+# B4: test runs must never send traces to the real Langfuse (repo/.env holds real keys and the Docker test
+# container loads it). This runs before any hri module is imported, so hri.obs.tracing sees blank keys and
+# stays a no-op. Only an explicit local sink run (LANGFUSE_HOST on localhost, as in docs/explain/fixes.md
+# F02/F10) keeps its fake keys.
+LOCAL_LANGFUSE = re.compile(r"^https?://(127\.0\.0\.1|localhost)(:\d+)?(/|$)")
+if not LOCAL_LANGFUSE.match(os.getenv("LANGFUSE_HOST", "")):
+    os.environ["LANGFUSE_PUBLIC_KEY"] = ""
+    os.environ["LANGFUSE_SECRET_KEY"] = ""
 
 
 def pytest_configure(config):
