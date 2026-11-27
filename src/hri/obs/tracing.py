@@ -8,6 +8,7 @@ If Langfuse keys are absent the decorators are no-ops, so the system still runs.
 """
 from __future__ import annotations
 
+import contextlib
 import functools
 import logging
 import os
@@ -17,7 +18,7 @@ log = logging.getLogger(__name__)
 _enabled = bool(os.getenv("LANGFUSE_PUBLIC_KEY") and os.getenv("LANGFUSE_SECRET_KEY"))
 
 if _enabled:
-    from langfuse import get_client, observe  # type: ignore
+    from langfuse import get_client, observe, propagate_attributes  # type: ignore
 else:  # pragma: no cover - fallback when Langfuse is not configured
     def observe(*dargs, **dkwargs):
         if dargs and callable(dargs[0]):
@@ -32,6 +33,9 @@ else:  # pragma: no cover - fallback when Langfuse is not configured
 
     def get_client():
         return None
+
+    def propagate_attributes(**kw):
+        return contextlib.nullcontext()
 
 
 def record_generation(*, name, model, input_text, output_text, tokens_in, tokens_out, cost):
@@ -55,6 +59,30 @@ def span_meta(**kw):
         lf.update_current_span(metadata=kw)
     except Exception as e:  # observability must never break a brief
         log.warning("langfuse span update failed: %s", e)
+
+
+def trace_attributes(*, tags: list[str] | None = None, session_id: str | None = None):
+    """Trace-level tags/session for the current trace and every span opened inside the block.
+    Only fixed labels and ids: never names or mail text."""
+    try:
+        return propagate_attributes(tags=tags, session_id=session_id)
+    except Exception as e:  # observability must never break a brief
+        log.warning("langfuse trace attributes failed: %s", e)
+        return contextlib.nullcontext()
+
+
+def score_trace(**scores):
+    """Numeric scores on the current trace (e.g. latency_ms, dropped_ratio). None values are skipped."""
+    lf = get_client()
+    if not lf:
+        return
+    for name, value in scores.items():
+        if value is None:
+            continue
+        try:
+            lf.score_current_trace(name=name, value=float(value), data_type="NUMERIC")
+        except Exception as e:
+            log.warning("langfuse score %s failed: %s", name, e)
 
 
 def update_trace(**kw):

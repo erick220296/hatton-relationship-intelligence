@@ -5,6 +5,8 @@ in-memory masker, and a StubModel in place of `complete_json`. Each test sets wh
 """
 from __future__ import annotations
 
+import pytest
+
 from hri.agent import brief_graph as bg
 from hri.llm import LLMUnavailable
 
@@ -227,3 +229,39 @@ def test_api_has_no_504_path():
     from pathlib import Path
     src = (Path(__file__).resolve().parents[1] / "src/hri/api/app.py").read_text()
     assert "HTTPException(504" not in src
+
+
+# ---------------------------------------------------------------- F10: one brief = one trace with tags and scores
+@pytest.fixture
+def trace_rec(monkeypatch):
+    import contextlib
+    from hri.obs import tracing
+    rec = {"attrs": [], "scores": {}}
+
+    def attrs(**kw):
+        rec["attrs"].append(kw)
+        return contextlib.nullcontext()
+    monkeypatch.setattr(tracing, "trace_attributes", attrs)
+    monkeypatch.setattr(tracing, "score_trace", lambda **kw: rec["scores"].update(kw))
+    monkeypatch.setattr(tracing, "current_trace_id", lambda: "trace-abc")
+    return rec
+
+
+async def test_trace_gets_session_tags_scores_and_id(brief_env, trace_rec):
+    brief_env.brief["signals"] = [{"text": "Uncited claim.", "cites": ["m999999"]}]
+    res = await bg.run_brief(REQ, "run-1", tags=["load-test"])
+    assert res["trace_id"] == "trace-abc"
+    assert trace_rec["attrs"][0] == {"tags": ["brief", "load-test"], "session_id": "run-1"}
+    assert trace_rec["attrs"][-1]["tags"][:3] == ["brief", "load-test", "llm"]
+    s = trace_rec["scores"]
+    assert set(s) == {"latency_ms", "cost_usd", "dropped_ratio", "citation_coverage"}
+    assert s["dropped_ratio"] == pytest.approx(1 / 6) and s["citation_coverage"] == pytest.approx(5 / 6)
+    assert s["cost_usd"] > 0 and s["latency_ms"] >= 0
+
+
+async def test_fallback_trace_is_tagged_fallback_and_escalated(brief_env, trace_rec):
+    brief_env.brief = LLMUnavailable("down")
+    res = await bg.run_brief(REQ, "run-2")
+    assert trace_rec["attrs"][-1]["tags"] == ["brief", "fallback", "escalated"]
+    assert trace_rec["scores"]["dropped_ratio"] == 0.0 and trace_rec["scores"]["citation_coverage"] is None
+    assert res["trace_id"] == "trace-abc"

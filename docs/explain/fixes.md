@@ -306,3 +306,48 @@ brief); `make kill-mcp`;
 (exact name or email only); an ambiguous or partial name gets no cached brief. If no brief was ever made for
 that person, there is nothing to show (mode stays `unavailable`). The cached brief can be days old; the
 warning says so, but the facts in it are not refreshed.
+
+---
+
+## F10: Every brief is one Langfuse trace with its id, tags, scores and cost
+
+**What was wrong.** The trace id saved with each brief was always empty: the API asked for the "current
+trace" *after* the brief's trace had already closed. Traces had no tags, so fallback, escalated and load-test
+runs could not be filtered, and no scores, so the latency distribution and quality numbers could not be
+charted. The old `update_trace` helper also called a method that this Langfuse version does not have.
+
+**What changed.**
+- `src/hri/agent/brief_graph.py`: `run_brief` (the root `pre_meeting_brief` span) now:
+  - sets the trace's **session = run_id** and tags `brief` (+ `load-test` when asked) at the start, then
+    `brief, <mode>, escalated` (if review is needed) at the end;
+  - sends **scores**: `latency_ms`, `cost_usd`, `dropped_ratio` (claims removed ÷ claims written; 0 when
+    nothing was written) and `citation_coverage` (claims with a valid citation ÷ claims written; skipped when
+    the model wrote nothing);
+  - captures **trace_id** while the trace is still open and returns it. The graph body moved unchanged into
+    `_run_brief`.
+- `src/hri/obs/tracing.py`: `trace_attributes()` (wraps Langfuse `propagate_attributes`) and `score_trace()`.
+  Both are no-ops without keys and never break a brief. Only fixed labels, ids and numbers are sent.
+- `src/hri/api/app.py`: the header `X-HRI-Run-Type: load-test` becomes the `load-test` tag; the returned
+  trace_id is stored in `brief.trace_id`.
+- `load/run_load.py`: sends that header, so load-test briefs are tagged.
+- Cost: each model call is already recorded as a generation with token usage and cost (unchanged); the trace
+  total comes from those, and `cost_usd` is also a score.
+- Tests: `tests/test_brief_graph.py` (+2: session/tags/scores/trace_id on a normal brief with one bad
+  citation → dropped_ratio 1/6, citation_coverage 5/6; a fallback brief is tagged `fallback, escalated`);
+  `tests/test_trace_api.py` (new: the header becomes the tag; in Docker, the trace_id is stored with the brief).
+
+**Course concept.** *Observability and evaluation in production*: every run is traceable end to end, tagged
+for filtering, and carries quality and latency scores you can chart (p50/p95/p99) and tie to cost.
+
+**How to see it working.** Without keys, use the local fake Langfuse: `python3 work/evidence-f02/sink.py /tmp/b.bin`,
+then `LANGFUSE_PUBLIC_KEY=pk-lf-test LANGFUSE_SECRET_KEY=sk-lf-test LANGFUSE_HOST=http://127.0.0.1:9417 uv run pytest -q tests/test_brief_graph.py -k "happy or generate_llm_unavailable"`,
+then `python3 work/evidence-f10/decode_traces.py /tmp/b.bin` → tag sets `brief`, `brief llm`,
+`brief fallback escalated`; scores latency_ms, cost_usd, dropped_ratio (+ citation_coverage on the llm
+brief), each with its trace id; 0 PII hits. With real keys: POST /brief returns a non-null `trace_id` equal to
+`select trace_id from brief order by id desc limit 1`, and the trace shows the tags and scores.
+
+**What still breaks it / limits.** Without Langfuse keys `trace_id` is null (correct, there is no trace).
+Child spans carry only the `brief` tag; the mode/escalated tags are set on the root span at the end (Langfuse
+shows the trace's tags as the union, as far as I can tell; this is not checked against the real service yet).
+Scores measure our own checks (citations, verifier drops), not ground truth: the judge eval is still the real
+quality measure.

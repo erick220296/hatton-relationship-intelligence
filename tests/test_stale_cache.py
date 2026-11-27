@@ -11,7 +11,7 @@ client = TestClient(api.app)
 
 @pytest.fixture
 def tools_down(monkeypatch):
-    async def unavailable(request, run_id, checkpointer=None):
+    async def unavailable(request, run_id, checkpointer=None, tags=None):
         return {"mode": "unavailable", "brief": None, "warnings": ["Relationship data service unavailable: test"],
                 "cost_usd": 0, "latency_ms": 1, "timings": {}, "person_id": None, "partner_email": None,
                 "meeting_id": None, "review": None}

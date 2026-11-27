@@ -412,7 +412,26 @@ def _at_deadline(last: dict) -> dict:
 
 
 @observe(name="pre_meeting_brief", capture_input=False, capture_output=False)
-async def run_brief(request: dict[str, Any], run_id: str, checkpointer=None) -> dict:
+async def run_brief(request: dict[str, Any], run_id: str, checkpointer=None, tags: list[str] | None = None) -> dict:
+    """One brief = one Langfuse trace: session = run_id, tags (brief, mode, escalated, load-test ...),
+    scores (latency_ms, cost_usd, dropped_ratio, citation_coverage). Returns the trace_id with the result."""
+    base_tags = ["brief", *(tags or [])]
+    with tracing.trace_attributes(tags=base_tags, session_id=run_id):
+        res, out = await _run_brief(request, run_id, checkpointer)
+        dropped = out.get("dropped") or []
+        total = len((out.get("verified") or {}).get("claims", [])) + len(dropped)
+        bad_cite = sum(d.get("reason") == "missing or invalid citation" for d in dropped)
+        final = base_tags + [res["mode"]] + (["escalated"] if (res.get("review") or {}).get("needed") else [])
+        with tracing.trace_attributes(tags=final):   # mode/escalation are only known at the end
+            pass
+        tracing.score_trace(latency_ms=res["latency_ms"], cost_usd=res["cost_usd"],
+                            dropped_ratio=len(dropped) / total if total else 0.0,
+                            citation_coverage=(total - bad_cite) / total if total else None)
+        res["trace_id"] = tracing.current_trace_id()
+    return res
+
+
+async def _run_brief(request: dict[str, Any], run_id: str, checkpointer=None) -> tuple[dict, dict]:
     global _graph
     if _graph is None or checkpointer is not None:
         _graph = build_graph(checkpointer)
@@ -439,4 +458,4 @@ async def run_brief(request: dict[str, Any], run_id: str, checkpointer=None) -> 
     tracing.span_meta(mode=res["mode"], person_id=res["person_id"], meeting_id=res["meeting_id"],
                       latency_ms=res["latency_ms"], cost_usd=res["cost_usd"], timings=res["timings"],
                       n_warnings=len(res["warnings"]), n_dropped=len(out.get("dropped") or []))
-    return res
+    return res, out

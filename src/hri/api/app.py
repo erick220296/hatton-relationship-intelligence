@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
 
 from hri import clock, db
@@ -84,7 +84,7 @@ def _cached(meeting_id: str | None = None, person_id: int | None = None, any_mod
 
 
 @app.post("/brief")
-async def brief(req: BriefRequest):
+async def brief(req: BriefRequest, x_hri_run_type: str | None = Header(default=None)):
     if req.meeting_id and not req.fresh:
         c = await asyncio.to_thread(_cached, meeting_id=req.meeting_id)
         if c:
@@ -93,9 +93,9 @@ async def brief(req: BriefRequest):
                     "review": c["content"].get("review")}
     run_id = str(uuid.uuid4())
     # run_brief never raises on the deadline: it degrades to facts-only (or 'delayed') inside the budget
-    res = await run_brief(req.model_dump(exclude={"fresh"}), run_id, _checkpointer)
-    res["run_id"] = run_id
-    res["trace_id"] = tracing.current_trace_id()
+    tags = ["load-test"] if x_hri_run_type == "load-test" else []   # set by load/run_load.py
+    res = await run_brief(req.model_dump(exclude={"fresh"}), run_id, _checkpointer, tags=tags)
+    res["run_id"] = run_id   # res["trace_id"] is captured inside run_brief, where the trace is current
     if res["mode"] in ("unavailable", "delayed"):
         pid = req.person_id
         if not pid and req.query:   # tools are down: resolve the name from our own store instead
@@ -203,7 +203,8 @@ async def precompute(days: int = 1, concurrency: int = 4):
 
     async def one(m):
         async with sem:
-            return await brief(BriefRequest(meeting_id=m["id"], partner_email=m["partner_email"], fresh=True))
+            return await brief(BriefRequest(meeting_id=m["id"], partner_email=m["partner_email"], fresh=True),
+                               x_hri_run_type=None)
     results = await asyncio.gather(*(one(m) for m in todo), return_exceptions=True)
     ok = [r for r in results if isinstance(r, dict) and r.get("mode") == "llm"]
     return {"meetings": len(todo), "llm": len(ok), "other": len(results) - len(ok),
