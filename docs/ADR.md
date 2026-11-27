@@ -103,7 +103,7 @@ Structured outputs (JSON schema) are used everywhere, so the gates parse reliabl
 2. **Masking before any third-party call:**
    - Regex for emails, phone numbers, URLs and UK-postcode address lines.
    - A dictionary of every known person (full, first and last name), organisation and deal codename (`Project X`).
-   - A Presidio/spaCy NER sweep for unknown names and places.
+   - A spaCy NER sweep **at ingest** adds unknown names and places to the dictionary (`ingest/ner.py`). A per-request Presidio sweep exists but is **off by default** for speed (about 8 s).
    - Tokens are HMAC-derived (`PERSON_1a2b3c`), so they are stable across messages and the model can still reason about who said what.
 3. **The vault:** the `pseudonym` table holds token → real. It is unreadable by the tool role and never leaves the database. Output is unmasked in-region.
 4. **One door out:** `privacy/egress.py` is the only HTTP client that can leave. A host allowlist is enforced before any bytes are sent, and every request and response body is written to `egress_audit`. The UI tab "What leaves the region" shows these exactly.
@@ -177,7 +177,7 @@ Before the build, the team wrote a fuller target architecture (v2.2). Where the 
 | Delivery surface | Read-only server-rendered web page | Streamlit UI + FastAPI | **Build wins for speed:** same pull-only, read-only behaviour, with less to build. Neither sends anything. |
 | Multi-attendee meetings | `Send` fan-out, one branch per external attendee | Briefs the first external attendee | **Deferred:** the golden path is one external attendee. Recorded as a known limitation. |
 | Retrieval | Hybrid keyword + vector + reranker | Entity-first (graph) + recent threads + vector hits, under a token budget | **Build is enough:** retrieval is filtered to the person first, so the candidate set is small; a reranker adds latency for little gain at this size. |
-| PII safety net | Presidio over the dictionary masker | Dictionary masker + regex + spaCy NER sweep, HMAC tokens | **Equivalent:** both put a dictionary first and NER as the net. |
+| PII safety net | Presidio over the dictionary masker | Dictionary masker + regex + spaCy NER sweep, HMAC tokens | **Equivalent:** both put a dictionary first and NER as the net (ours runs at ingest; per-request Presidio is off by default for latency). |
 | Incremental sync | Cursor-based job every ~15 min | `make live` replays post-backfill mail through the same ingest (idempotent) | **Partly:** the ingest path is the same; a scheduler is a production item. |
 | Deployment | Terraform + ECR + EC2 via SSM + GitHub OIDC | Docker Compose, reproducible from a clean machine | **Deferred to production:** the course requires "containerised, reproducible", which Compose meets. The AWS path is the production plan, not demo scope. |
 | Escalation | Langfuse annotation queue | In-app "Needs partner review" queue | **Build (after fixes F07/F08) wins:** it can be shown live, which the rubric requires. |
