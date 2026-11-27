@@ -20,6 +20,8 @@ services:
     build: .
     command: python -m hri.mcp_server.server
     env_file: .env
+    volumes: &srcvol
+      - ./src:/app/src:ro          # live source: code edits apply on restart, no dependency reinstall
     environment:
       DATABASE_URL: postgresql://hri_ro:hri_ro@db:5432/hri   # SELECT-only role
     depends_on: { db: { condition: service_healthy } }
@@ -29,6 +31,7 @@ services:
     build: .
     command: uvicorn hri.api.app:app --host 0.0.0.0 --port 8000
     env_file: .env
+    volumes: *srcvol
     environment: &dbenv
       DATABASE_URL: postgresql://hri:hri@db:5432/hri
       MCP_URL: http://mcp:8001/mcp
@@ -40,6 +43,7 @@ services:
     command: streamlit run src/hri/ui/streamlit_app.py --server.port 8501 --server.address 0.0.0.0
     environment:
       API_URL: http://api:8000
+    volumes: *srcvol
     depends_on: [api]
     ports: ["8501:8501"]
 
@@ -55,6 +59,9 @@ services:
       - ./data:/app/data
       - ./docs:/app/docs
       - ./evals:/app/evals
+      - ./corpus:/app/corpus
+      - ./load:/app/load
+      - ./src:/app/src:ro
     depends_on: { db: { condition: service_healthy } }
 
 volumes:

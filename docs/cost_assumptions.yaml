@@ -1,0 +1,29 @@
+# Commercial Lead (Yasiru) owns this file. Every price needs a source URL and the date you looked it up.
+# Items marked TODO are placeholders - replace them before the pitch.
+client_budget_usd_per_month: 900
+
+volume:                       # from the client brief §4
+  briefs_per_day_normal: 12.5     # "10-15 per day"
+  briefs_per_day_peak: 45         # 3x the morning burst; our load-test peak
+  messages_per_day_normal: 400
+  messages_per_day_peak: 800      # TODO confirm with client (Q9)
+  threads_per_message: 0.4        # measured on corpus: 14,818 external threads / ~38k messages
+
+infrastructure:
+  vm_in_region:                   # 4 vCPU / 16 GB, UK/EU region: Postgres + MCP + API + UI + embeddings
+    usd_per_month: 140
+    source: "TODO Commercial Lead: e.g. AWS EC2 m7i.xlarge eu-west-2 on-demand, https://aws.amazon.com/ec2/pricing/on-demand/"
+    looked_up: "TODO"
+  storage_and_backups:            # 100 GB SSD + daily snapshots
+    usd_per_month: 15
+    source: "TODO Commercial Lead: provider block-storage + snapshot pricing page"
+    looked_up: "TODO"
+  langfuse:                       # observability (masked payloads only)
+    usd_per_month: 29
+    source: "TODO Commercial Lead: https://langfuse.com/pricing (Core plan) - or $0 if self-hosted / Hobby tier"
+    looked_up: "TODO"
+
+partner_time:
+  usd_per_hour: 400               # TODO: ask client (Q8); placeholder for a mid-market PE partner, fully loaded
+  minutes_saved_per_brief: 37.5   # client brief: 30-45 minutes of inbox searching per meeting
+  source: "client brief §2 (minutes); hourly value is an ASSUMPTION pending client answer"

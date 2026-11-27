@@ -255,6 +255,7 @@ async def finalize(s: BriefState) -> dict:
     brief["sections"] = sections
     brief["dropped_claims"] = [{"text": unmask(d["text"]), "reason": unmask(d["reason"])} for d in s.get("dropped") or []]
     brief["context_stats"] = s["context"]["stats"]
+    brief["profile_source"] = s["evidence"]["PROFILE"]   # exactly what PROFILE citations refer to (for audit/eval)
     return {"brief": brief, "mode": "llm"}
 
 

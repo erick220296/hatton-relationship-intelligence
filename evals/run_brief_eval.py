@@ -16,7 +16,7 @@ import json
 import random
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
@@ -111,7 +111,9 @@ def judge(brief: dict) -> dict:
     bodies = {r["id"]: f"{r['sent_at']:%Y-%m-%d} from {r['sender']}: {r['body'][:2500]}" for r in db.q(
         """SELECT m.id, m.sent_at, p.name AS sender, m.body FROM message m JOIN person p ON p.id = m.from_id
            WHERE m.id = ANY(%s)""", (ids,))}
-    profile = json.dumps({k: brief.get(k) for k in ("person", "relationship", "other_partners")}, default=str)
+    # the exact PROFILE block the writer and verifier saw (older briefs: fall back to header fields)
+    profile = brief.get("profile_source") or json.dumps(
+        {k: brief.get(k) for k in ("person", "relationship", "other_partners")}, default=str)
     mk = masker()
     listing = "\n\n".join(
         f"CLAIM {i} ({sec}): {mk.mask(c['text'])}\nSOURCES:\n" +
@@ -212,7 +214,7 @@ def main():
     unsup = sum(len((r["judge"] or {}).get("unsupported", [])) for r in results if isinstance(r["judge"], dict))
     fr = [r["fact_recall"] for r in results if r["fact_recall"]]
     summary = {
-        "run_at": datetime.utcnow().isoformat() + "Z", "cases": len(results),
+        "run_at": datetime.now(timezone.utc).isoformat(), "cases": len(results),
         "passed": sum(r["pass"] for r in results),
         "pass_rate": round(sum(r["pass"] for r in results) / max(1, len(results)), 3),
         "by_kind": {k: f"{sum(r['pass'] for r in results if r['kind'] == k)}/{sum(r['kind'] == k for r in results)}"

@@ -6,6 +6,8 @@ This system turns six partners' email and calendars into a relationship graph. I
 
 It informs only. It never emails, schedules or contacts anyone.
 
+**New to the project? Start with [`docs/PROJECT_GUIDE.md`](docs/PROJECT_GUIDE.md)**: a plain-English walkthrough of what it does, how it works and how to run it. To try it with test data, see [`docs/TESTING_GUIDE.md`](docs/TESTING_GUIDE.md).
+
 Client brief and engagement docs: `docs/brief/`. Architecture and decisions: `docs/ADR.md`.
 
 ## Run it from a clean machine
