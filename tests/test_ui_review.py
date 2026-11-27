@@ -69,3 +69,23 @@ def test_page_has_no_action_buttons(fake_api):
     labels = {b.label for b in at.button}
     assert labels <= {"Brief me", "Approve", "Reject"}, labels
     assert not any(w in l.lower() for l in labels for w in ("send", "email", "schedule", "book", "invite"))
+
+
+def test_data_service_down_degrades_quietly(fake_api, monkeypatch):
+    """B1: with the data service down, no red API banner for meetings, and no raw exception text."""
+    inner = httpx.request
+
+    def request(method, url, **kw):
+        if "/meetings/upcoming" in url:
+            raise httpx.HTTPStatusError("503 Service Unavailable\nExceptionGroup(...)", request=None, response=None)
+        if method == "POST" and url.endswith("/brief"):
+            return _Resp({**BRIEF, "mode": "stale_cache",
+                          "warnings": ["Relationship data service unavailable right now.\nTraceback (most recent call)"]})
+        return inner(method, url, **kw)
+    monkeypatch.setattr(httpx, "request", request)
+    at = AppTest.from_file(APP, default_timeout=30).run()
+    assert not at.error
+    assert any("Meetings unavailable (data service down)" in c.value for c in at.caption)
+    at.text_input[0].input("jamie.tucker@wrightco.example")
+    next(b for b in at.button if b.label == "Brief me").click().run()
+    assert [w.value for w in at.warning] == ["Relationship data service unavailable right now."]

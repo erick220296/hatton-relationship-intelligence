@@ -11,13 +11,15 @@ API = os.getenv("API_URL", "http://localhost:8000")
 st.set_page_config(page_title="Hatton Relationship Intelligence", layout="wide")
 
 
-def api(method, path, **kw):
+def api(method, path, quiet=False, **kw):
+    """quiet=True: optional data; on failure return None and let the caller show a calm note."""
     try:
         r = httpx.request(method, f"{API}{path}", timeout=60, **kw)
         r.raise_for_status()
         return r.json()
     except Exception as e:
-        st.error(f"API error: {e}")
+        if not quiet:
+            st.error(f"API error: {str(e).splitlines()[0][:200]}")
         return None
 
 
@@ -47,7 +49,7 @@ def render(res):
         return
     mode = res.get("mode")
     for w in res.get("warnings", []):
-        st.warning(w)
+        st.warning(str(w).splitlines()[0][:300])   # one clean line, never a traceback
     if mode == "ambiguous":
         st.info("Several contacts share this name. Pick one:")
         for c in res.get("candidates") or []:
@@ -90,7 +92,7 @@ def render(res):
 
 
 with tab_brief:
-    up = api("GET", "/meetings/upcoming", params={"partner": partner_email, "days": 1}) or []
+    up = api("GET", "/meetings/upcoming", quiet=True, params={"partner": partner_email, "days": 1})
     col1, col2 = st.columns([2, 1])
     with col1:
         q = st.text_input("Who are you meeting?", placeholder="Name or email")
@@ -99,7 +101,9 @@ with tab_brief:
                 st.session_state["brief"] = api("POST", "/brief", json={"query": q, "partner_email": partner_email})
     with col2:
         st.markdown("**Next 24h**")
-        for m in up[:12]:
+        if up is None:
+            st.caption("Meetings unavailable (data service down)")
+        for m in (up or [])[:12]:
             if st.button(f"{m['start_at'][11:16]} {m['title']}", key=m["id"] + m["partner_email"]):
                 with st.spinner("Preparing brief..."):
                     st.session_state["brief"] = api("POST", "/brief", json={"meeting_id": m["id"],

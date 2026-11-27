@@ -475,3 +475,31 @@ without deleting; a second run skips it.
 **How to use.** Just before the pitch: `make clear-test-briefs-dry` (count), then `make clear-test-briefs`.
 Not run yet. **Limit:** it clears everything queued at that moment, including real flags, so run it only
 before the demo.
+
+---
+
+## B1: The UI stays calm when the data service is down
+
+**What was wrong.** During the "kill a tool" demo (`make kill-mcp`) the UI showed a red "API error … 503"
+banner, because the upcoming-meetings list failed. The brief's warning also showed raw technical text
+(`ExceptionGroup(... ConnectError ...)`, internal URLs).
+
+**What changed.**
+- `src/hri/agent/brief_graph.py`: when the data tools are down, the warning is one plain sentence,
+  "Relationship data service unavailable right now." The technical details go to the server log instead.
+- `src/hri/ui/streamlit_app.py`: the meetings list is optional. If it fails, it shows "Meetings unavailable
+  (data service down)" with no red banner. Every warning is shown as one clean line (no tracebacks), and
+  any remaining API error banner shows only the first line, trimmed.
+- Tests: `test_brief_graph.py::test_tools_down_warning_is_one_clean_line`;
+  `test_ui_review.py::test_data_service_down_degrades_quietly` (no error banner, the calm meetings note, a
+  one-line warning).
+
+**Course concept.** *Graceful degradation, seen from the user's side*: the failure is explained in plain
+words, not dumped on screen.
+
+**How to see it working.** `make kill-mcp`, open http://localhost:8501: the meetings column says "Meetings
+unavailable (data service down)"; brief jamie.tucker → stale brief, clean warnings. `make revive-mcp`.
+(Needs the api and ui containers restarted once to pick up the change.)
+
+**What still breaks it / limits.** Other API calls (partners, stats, quiet list) still show a short error line
+if the whole API is down, which is correct, because then nothing works.

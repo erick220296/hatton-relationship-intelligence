@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import logging
 import re
 import time
 from typing import Any, TypedDict
@@ -30,6 +31,9 @@ from hri.llm import LLMUnavailable, complete_json
 from hri.obs import tracing
 from hri.obs.tracing import observe
 from hri.privacy.masker import masker, unmask
+
+log = logging.getLogger("hri.brief")
+DATA_DOWN = "Relationship data service unavailable right now."
 
 INJECTION_RE = re.compile(r"(ignore (all )?(previous|prior) instructions|system (note|prompt)|"
                           r"\bAI (assistant|system|model)s?\b|you are now|disregard (the|all) )", re.I)
@@ -135,7 +139,8 @@ async def resolve(s: BriefState) -> dict:
                 return {"person_id": int(req["person_id"]), "partner_email": partner, "meeting": None}
             cands = await t.call("find_person", query=req.get("query", ""), partner_email=partner)
     except ToolUnavailable as e:
-        return {"mode": "unavailable", "warnings": [f"Relationship data service unavailable: {e}"]}
+        log.warning("data tools unavailable in resolve: %r", e)   # details in the server log, not the UI
+        return {"mode": "unavailable", "warnings": [DATA_DOWN]}
     if not cands:
         return {"mode": "not_found", "warnings": [f"No contact matches '{req.get('query')}'"]}
     exact = [c for c in cands if c["name"].lower() == req.get("query", "").strip().lower()
@@ -169,7 +174,8 @@ async def gather(s: BriefState) -> dict:
                 except ToolUnavailable:
                     pass   # optional enrichment
     except ToolUnavailable as e:
-        return {"mode": "unavailable", "warnings": s.get("warnings", []) + [f"Relationship data service unavailable: {e}"]}
+        log.warning("data tools unavailable in gather: %r", e)
+        return {"mode": "unavailable", "warnings": s.get("warnings", []) + [DATA_DOWN]}
     return {"data": {"profile": profile, "threads": threads or [], "commitments": commitments or [],
                      "index": index or [], "hits": hits or []}}
 

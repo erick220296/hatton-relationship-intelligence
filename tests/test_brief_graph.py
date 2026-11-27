@@ -265,3 +265,10 @@ async def test_fallback_trace_is_tagged_fallback_and_escalated(brief_env, trace_
     assert trace_rec["attrs"][-1]["tags"] == ["brief", "fallback", "escalated"]
     assert trace_rec["scores"]["dropped_ratio"] == 0.0 and trace_rec["scores"]["citation_coverage"] is None
     assert res["trace_id"] == "trace-abc"
+
+
+async def test_tools_down_warning_is_one_clean_line(brief_env):
+    """B1: no raw exception text (ExceptionGroup, URLs) in the warning shown to the partner."""
+    brief_env.tools_down = True
+    res = await bg.run_brief(REQ, "t-clean-warning")
+    assert res["warnings"] == [bg.DATA_DOWN]
