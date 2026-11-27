@@ -204,3 +204,40 @@ call ends at its own timeout, but a hang inside our own DB code would keep a thr
 finite, about 32 workers). The 12 s / 6 s margins are estimates from the old eval timings, not tuned with the
 real model tonight (no key). The load test above exercises the fallback path only; the latency of real model
 briefs under load still needs a key to measure.
+
+---
+
+## F07: Human review queue (backend) and decision log
+
+**What was wrong.** F05 marks doubtful briefs with `review.needed`, but nothing happened next. There was no
+list for a partner to work through, no way to record "I checked this", and no audit trail.
+
+**What changed.**
+- `src/hri/graph/schema.sql` + new `src/hri/graph/migrations/001_review_queue.sql`: `brief` gets `status`
+  (`ok | needs_review | reviewed | rejected`) and `review_reasons`; a new `review_log` table records
+  `brief_id, decision, note, reviewer, at`. The migration is additive and safe to re-run. It is needed because
+  `schema.sql` only runs on an empty database volume. It has already been applied to the running stack.
+- `src/hri/api/app.py`: saving a brief sets `status = needs_review` when `review.needed` is true.
+  `GET /review` lists flagged briefs, newest first, with reasons. `POST /review/{brief_id}`
+  `{"decision": "approve"|"reject", "note": ...}` updates the status and writes a `review_log` row in one
+  transaction. It returns 404 for an unknown brief and 409 if the brief was already decided. It writes only
+  to our own database: nothing is sent to anyone.
+- `src/hri/agent/brief_graph.py`: the fallback review reason now says "model unavailable" explicitly.
+- Tests: `tests/test_review_queue.py` (new). The decision must be approve/reject (422 otherwise). In
+  Docker (db-marked): a flagged brief is queued, approved, leaves the queue and is logged once; a second
+  decision returns 409; an unflagged brief is not queued; an unknown id returns 404. The tests delete the
+  rows they create.
+
+**Course concept.** *Human in the loop / escalation*: the agent does not hide uncertainty, it routes it to a
+person. The decision log is the *audit trail*, and also a simple *episodic memory* of partner feedback.
+
+**How to see it working.** `make kill-llm`; brief for jamie.tucker (response has `brief_id`);
+`curl localhost:8000/review` lists it with the reason "model unavailable";
+`curl -X POST localhost:8000/review/<id> -H 'content-type: application/json' -d '{"decision":"approve","note":"checked"}'`
+→ 200, and the brief is gone from `/review`;
+`docker compose exec db psql -U hri -c 'select * from review_log'` shows the row with its timestamp. Then `make revive-llm`.
+
+**What still breaks it / limits.** There are no logins: `reviewer` is whatever the caller sends (default
+"partner"). Every fresh fallback brief is queued, including load-test runs, so the queue can fill with
+repeats for the same person. The tool server's read-only database role does not see `review_log` on the
+existing volume (it doesn't need to).

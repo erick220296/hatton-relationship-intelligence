@@ -305,7 +305,7 @@ def _review(s: BriefState, mode: str) -> dict:
     """Why a person should look at this brief before (or instead of) trusting it. Feeds the review queue."""
     reasons = list(s.get("review") or [])
     if mode == "fallback":
-        reasons.append("Facts-only brief: no model-written content (language model or fact-checker unavailable).")
+        reasons.append("Facts-only brief (model unavailable or out of time): no model-written content.")
     kept, dropped = len((s.get("verified") or {}).get("claims", [])), len(s.get("dropped") or [])
     if not s.get("unverified") and kept + dropped and dropped / (kept + dropped) > 0.3:
         reasons.append(f"{dropped} of {kept + dropped} model-written claims failed citation or fact checks and "

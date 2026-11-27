@@ -132,6 +132,19 @@ CREATE TABLE IF NOT EXISTS brief (
   trace_id    TEXT
 );
 CREATE INDEX IF NOT EXISTS brief_person_idx ON brief (person_id, created_at DESC);
+ALTER TABLE brief ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'ok';          -- ok | needs_review | reviewed | rejected
+ALTER TABLE brief ADD COLUMN IF NOT EXISTS review_reasons JSONB;
+CREATE INDEX IF NOT EXISTS brief_status_idx ON brief (status, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS review_log (    -- who decided what about which brief, and why (audit trail)
+  id        BIGSERIAL PRIMARY KEY,
+  brief_id  BIGINT REFERENCES brief(id),
+  decision  TEXT NOT NULL,                 -- approve | reject
+  note      TEXT,
+  reviewer  TEXT,
+  at        TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS review_log_brief_idx ON review_log (brief_id, at DESC);
 
 CREATE TABLE IF NOT EXISTS kv (
   key   TEXT PRIMARY KEY,

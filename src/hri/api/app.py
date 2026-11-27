@@ -6,6 +6,7 @@ import json
 import logging
 import uuid
 from contextlib import asynccontextmanager
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -56,10 +57,13 @@ def _store(res: dict) -> int | None:
     if not res.get("brief") or not res.get("person_id"):
         return None
     pid = db.q1("SELECT id FROM person WHERE email = %s", (res.get("partner_email"),)) if res.get("partner_email") else None
-    r = db.q1("""INSERT INTO brief (person_id, partner_id, meeting_id, mode, content, latency_ms, cost_usd, trace_id)
-                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+    review = res.get("review") or {}
+    r = db.q1("""INSERT INTO brief (person_id, partner_id, meeting_id, mode, content, latency_ms, cost_usd, trace_id,
+                                    status, review_reasons)
+                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
               (res["person_id"], pid["id"] if pid else None, res.get("meeting_id"), res["mode"],
-               json.dumps(res["brief"], default=str), res["latency_ms"], res["cost_usd"], res.get("trace_id")))
+               json.dumps(res["brief"], default=str), res["latency_ms"], res["cost_usd"], res.get("trace_id"),
+               "needs_review" if review.get("needed") else "ok", json.dumps(review.get("reasons") or [])))
     return r["id"]
 
 
@@ -102,6 +106,38 @@ async def brief(req: BriefRequest):
     if res["mode"] in ("llm", "fallback"):
         res["brief_id"] = await asyncio.to_thread(_store, res)
     return res
+
+
+# ---------------------------------------------------------------- human review queue (F07)
+# Decisions are written only to our own database (brief.status + review_log). Nothing is sent anywhere.
+class ReviewDecision(BaseModel):
+    decision: Literal["approve", "reject"]
+    note: str | None = None
+    reviewer: str | None = None
+
+
+@app.get("/review")
+def review_queue(limit: int = 50):
+    """Briefs flagged for a partner to check, newest first, with the reasons."""
+    return db.q("""SELECT b.id AS brief_id, b.created_at, b.mode, b.status, b.review_reasons AS reasons,
+                          b.meeting_id, p.name AS person, p.email AS person_email, pa.email AS partner_email
+                   FROM brief b JOIN person p ON p.id = b.person_id LEFT JOIN person pa ON pa.id = b.partner_id
+                   WHERE b.status = 'needs_review' ORDER BY b.created_at DESC, b.id DESC LIMIT %s""", (limit,))
+
+
+@app.post("/review/{brief_id}")
+def review_decide(brief_id: int, d: ReviewDecision):
+    status = "reviewed" if d.decision == "approve" else "rejected"
+    with db.conn() as c, c.transaction():
+        row = c.execute("UPDATE brief SET status = %s WHERE id = %s AND status = 'needs_review' RETURNING id",
+                        (status, brief_id)).fetchone()
+        if not row:
+            exists = c.execute("SELECT status FROM brief WHERE id = %s", (brief_id,)).fetchone()
+            raise HTTPException(404 if not exists else 409,
+                                "No such brief" if not exists else f"Brief already {exists['status']}")
+        log = c.execute("""INSERT INTO review_log (brief_id, decision, note, reviewer) VALUES (%s,%s,%s,%s)
+                           RETURNING id, at""", (brief_id, d.decision, d.note, d.reviewer or "partner")).fetchone()
+    return {"brief_id": brief_id, "status": status, "review_log_id": log["id"], "at": log["at"]}
 
 
 @app.get("/quiet")
