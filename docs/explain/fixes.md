@@ -241,3 +241,35 @@ person. The decision log is the *audit trail*, and also a simple *episodic memor
 "partner"). Every fresh fallback brief is queued, including load-test runs, so the queue can fill with
 repeats for the same person. The tool server's read-only database role does not see `review_log` on the
 existing volume (it doesn't need to).
+
+---
+
+## F08: Human review in the UI: badge and "Needs partner review" tab
+
+**What was wrong.** The review queue (F07) existed only as an API. On stage, nobody could see that a brief
+had been flagged, or act on it.
+
+**What changed.** (`src/hri/ui/streamlit_app.py`)
+- Any brief with `review.needed` shows a red badge: **"Flagged for partner review: (1) reason …"** plus its
+  brief number.
+- A new tab, **"Needs partner review (N)"**, lists `GET /review`: who, mode, time, reasons. Each card has a
+  Note field and **Approve** / **Reject** buttons that call `POST /review/{id}`; the list refreshes and the
+  card disappears. It shows at most 50 cards ("50+" in the tab title when there are more).
+- Tests: `tests/test_ui_review.py` (new; uses Streamlit's `AppTest` with a fake API, no stack needed). The
+  tab lists the flagged brief, Approve sends `{"decision": "approve", "note": ...}`, and the brief is gone
+  after the rerun and on a fresh load. A flagged brief shows the badge with its reason. The only buttons on
+  the page are Brief me, Approve and Reject (plus meeting buttons when there are meetings): no
+  send/email/schedule.
+
+**Course concept.** *Human in the loop*, made visible: the escalation is part of the product, not a log file.
+
+**How to see it working.** `make kill-llm`; open http://localhost:8501; brief `jamie.tucker@wrightco.example`
+→ red "Flagged for partner review" badge. Reload, open the "Needs partner review" tab, type a note, click
+Approve → the card disappears and stays gone after reload; `select * from review_log` shows your note.
+`make revive-llm`. Tests: `uv run pytest -q tests/test_ui_review.py`.
+
+**What still breaks it / limits.** The tab count is read when the page loads, so a brief you just made
+appears in the tab after the next reload. Every fresh fallback brief is queued, so after test or load runs
+the list is long and repetitive (more than 100 right now). For a clean demo, approve or reject the old ones
+first, or ask for a "clear test briefs" step. There are no logins: the reviewer is the partner picked in
+the sidebar.
