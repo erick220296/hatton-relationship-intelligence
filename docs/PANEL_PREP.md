@@ -137,9 +137,14 @@ Re-run this after the final eval and update the table.
 
 ### 2.5 Anthropic's side (Yasiru: verify before the session)
 
-- [ ] Find Anthropic's **current** commercial or API terms and privacy policy, and quote the line saying API inputs and outputs are **not used for model training** by default
-- [ ] Note the **data retention period** stated there
-- [ ] Put the link and the date checked on the slide. Don't quote it from memory.
+Checked 2026-11-27 by Yasiru (with AI assistance), from the live pages:
+
+- **No training on API data by default.** Commercial Terms, Section B: *"Anthropic may not train models on Customer Content from Services."* https://www.anthropic.com/legal/commercial-terms (effective 17 Jun 2025). Privacy Center (dated 18 Aug 2026): *"By default, we will not use your inputs or outputs from our commercial products (e.g. Claude for Work, Anthropic API, …) to train our models."* https://privacy.claude.com/en/articles/7996868-is-my-data-used-for-model-training
+- **Retention: 30 days by default.** *"For Anthropic API users, we automatically delete inputs and outputs on our backend within 30 days of receipt or generation, except:"* (exceptions: customer-controlled storage such as the Files API, agreed arrangements such as ZDR, Usage Policy enforcement, and legal requirements). If flagged by trust and safety systems: *"We retain inputs and outputs for up to 2 years."* https://privacy.claude.com/en/articles/7996866-how-long-do-you-store-my-organization-s-data (dated 1 Jul 2026)
+- **Batch API results:** *"Batch results are available for 29 days after creation."* Batch processing is **not** eligible for zero data retention. https://platform.claude.com/docs/en/build-with-claude/batch-processing. This matters for us: the backfill used Batch, which is why only **masked** text ever goes into it.
+- **Zero data retention (ZDR)** is available by arrangement through Anthropic sales, per organisation, and not for Batch. https://platform.claude.com/docs/en/manage-claude/api-and-data-retention
+
+**Say it like this:** "Anthropic contractually may not train on our API data. They delete it within 30 days by default, 29 days for batch results. And what they receive is already masked: placeholders, not names. For production we'd add a zero-data-retention agreement for the live brief calls."
 
 ---
 
