@@ -16,7 +16,7 @@ Organised by the marking scheme. Each answer is short enough to say in about 20 
 9. **"Why is quiet detection pure code?"** Partners need to trust and tune it. A formula is free, explainable ("usual gap 12 days, now 94"), reproducible and testable against planted truth. **An AI judgement is none of those.**
 
 ## C. Context engineering, MCP and memory (15 marks)
-10. **"What's your context strategy?"** A fixed token budget far below the model window, filled by priority: profile → commitments → recent threads in full → older threads as one-line index entries → search hits. Overflow compresses, then drops, and **reports what it trimmed**. Demo: `make big-context`, the heaviest relationship with 667 messages (~70k tokens).
+10. **"What's your context strategy?"** A fixed token budget far below the model window, filled by priority: profile → commitments → recent threads in full → older threads as one-line index entries → search hits. Overflow compresses, then drops, and **reports what it trimmed**. Demo: `make big-context`: the heaviest relationship has 615 messages (~27k tokens), 4× the budget; 8 threads kept in full, 40 as index lines, 212 omitted.
 11. **"Why not just use the whole 1M window?"** Cost scales with tokens, and models lose focus in long contexts. A small, relevant context is cheaper, faster and more accurate.
 12. **"Why MCP if the model doesn't pick tools?"** It's a **swappable, least-privilege boundary**: a separate service, read-only tools, a database role that can only SELECT. Change Outlook to Gmail and the agent doesn't change. And "kill a tool" is a real failure.
 13. **"How do you prove the tools are read-only?"** Tools are annotated read-only, the role `hri_ro` can't INSERT, UPDATE or DELETE (a test tries and fails), and the no-outbound tests scan the code for send-like calls.
@@ -25,7 +25,7 @@ Organised by the marking scheme. Each answer is short enough to say in about 20 
 ## D. Observability and evidence (15 marks)
 15. **"Show me Langfuse."** Every brief is one trace: tags (brief, fallback, escalated, load-test), scores (latency, cost, dropped ratio, citation coverage), and the trace id stored with the brief, which is the audit link. **Langfuse receives masked text and counts only** (fix F02, proven: 0 of 3,211 identifiers in traces).
 16. **"What's your latency distribution?"** 🔑 It needs the model key for real briefs. Measured so far: with the AI switched off, 90/90 requests under 6 concurrent users answered, max ~0.6 s, 0 errors. Eric's earlier real-model run: p50 ~11 s on 19 briefs (too few for a true p95). **Be honest: the full load test is the one open item.**
-17. **"What's your eval pass rate?"** Eric's last run (before tonight's fixes): 10/35 strict passes, 58% of claims grounded, partly due to a judge bug since fixed and hangs since fixed (F06). The re-run needs the key. **Quiet detection: about 9 in 10 cooled relationships found, all 25 dead deals.**
+17. **"What's your eval pass rate?"** Eric's last run (before tonight's fixes): 10/35 strict passes, 58% of claims grounded, partly due to a judge bug since fixed and hangs since fixed (F06). The re-run needs the key. **Quiet detection: 55 of 60 planted cooled relationships found (recall 0.92, precision 0.81 on tonight's rebuild), all 25 dead deals.**
 18. **"Who checked your work?"** The builder never graded himself: an independent evaluator ran every fix (PASS/FAIL with evidence) before it counted.
 
 ## E. Constraint compliance, proven (15 marks)

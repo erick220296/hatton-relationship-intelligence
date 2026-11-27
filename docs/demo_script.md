@@ -27,7 +27,7 @@ Open these tabs in the browser: the UI, the Langfuse dashboard, `docs/evidence/`
 3. 🔑 With the model on: a full written brief in under 30 s. Show its trace in Langfuse (latency, cost, masked prompt).
 
 ## 4. Gone quiet (1 min): tab "Gone quiet"
-"We planted 60 cooled relationships in the synthetic corpus. The system found 56 (recall 0.93, precision 0.77), and 25 of 25 dead deals." Read one reason string aloud (usual gap vs days silent).
+"We planted 60 cooled relationships in the synthetic corpus. The system found 55 of them (recall 0.92, precision 0.81 on tonight's rebuild), and 25 of 25 dead deals." Read one reason string aloud (usual gap vs days silent).
 
 ## 5. What leaves the region (1 min): tab "What leaves the region"
 Show an outbound payload: placeholders such as `PERSON_1a2b…`, no real names. "Every byte that goes to the model is logged here; Langfuse gets masked text and counts only." Mention the leak test (0 of 1,791 names leaked) and its negative control.
@@ -39,7 +39,7 @@ Show an outbound payload: placeholders such as `PERSON_1a2b…`, no real names. 
 | Kill a tool | `make kill-mcp`, then request a brief already generated once | The last brief, labelled stale (fix F09). `make revive-mcp` after. |
 | Malformed input | `make malformed` | 5 of 5 bad records quarantined with reasons; ingest continues. |
 | Hostile email | Brief for `janice.hall@martincapitaladvis.example` | The injection email is **withheld** and named in the review reasons; it never reaches the model. |
-| Exceed the context | `make big-context` | The heaviest relationship (667 messages, about 70k tokens) is fitted into the budget; it prints what was kept, compressed and dropped. |
+| Exceed the context | `make big-context` | The heaviest relationship (615 messages, about 27k tokens, 4× the 6k budget) is fitted into the budget: 8 threads in full, 40 as index lines, 212 omitted, and it says so. |
 
 ## 7. Human escalation (1 min): tab "Needs partner review"
 Briefs that fell back, had claims removed or withheld an email appear here with the reason. A partner marks one reviewed and adds a note; that decision is logged. "The system informs; a human decides."

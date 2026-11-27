@@ -84,9 +84,9 @@ The full map of patterns to code is in §15.
 - **Separate service:** the MCP server runs as its own container, so "kill a tool" is real (`make kill-mcp`).
 
 ### D8. Memory
-- **Working memory:** LangGraph state for one brief run, checkpointed to Postgres (`AsyncPostgresSaver`), so every run is replayable and auditable by `run_id`.
+- **Working memory:** LangGraph state for one brief run, checkpointed to Postgres (`AsyncPostgresSaver`), so every run's state is recorded and auditable by `run_id` (a replay command is not built).
 - **Long-term memory:** the graph itself (edges, commitments, thread topics) plus stored briefs. Each brief is also the fallback when tools fail.
-- **Context engineering:** a 6k-token budget with explicit priority: profile → commitments → recent threads in full → older threads as index lines → semantic hits. Overflow degrades items to index lines and then drops them, and the brief reports what was compressed. This is the "exceed the context" demo: the heaviest relationship has 667 messages, about 70k tokens raw.
+- **Context engineering:** a 6k-token budget with explicit priority: profile → commitments → recent threads in full → older threads as index lines → semantic hits. Overflow degrades items to index lines and then drops them, and the brief reports what was compressed. This is the "exceed the context" demo: on the current database the heaviest relationship has 615 messages in 260 threads, about 27,000 tokens raw, more than 4× the 6,000-token budget. The brief keeps 8 threads in full, 40 as index lines, and omits 212, and says so.
 
 ### D9. Models
 | Use | Model | Why |
@@ -120,7 +120,7 @@ Structured outputs (JSON schema) are used everywhere, so the gates parse reliabl
 
 ## 7. Latency design
 - **Overnight:** `POST /precompute` prepares briefs for tomorrow's meetings. A request by `meeting_id` returns the cached brief in ~0 s.
-- **On demand:** a 25 s internal budget. The verifier is skipped if it would breach the budget, and the brief says so. Measured distribution: see `docs/evidence/load_*.json` and the Langfuse dashboard.
+- **On demand:** a 25 s internal budget. If the verifier can't run in time, the system now **fails closed**: model-written claims are removed and the brief is flagged for review (fix F05); it never returns unchecked claims. If the deadline is close, it degrades to verified or facts-only content (F06). **Latency evidence status (27 Nov):** the degraded path is measured (6 concurrent × 30 requests, 0 errors, max ~0.6 s, `work/eval_batch1.md`); the real-model p95/p99 under load and the Langfuse latency chart need a funded model key and are still open (§16).
 
 ## 8. Cost design
 Detail is in `docs/cost_model.md`, which is built on measured Langfuse/egress token counts.
