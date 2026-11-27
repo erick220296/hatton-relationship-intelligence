@@ -81,7 +81,8 @@ async def brief(req: BriefRequest):
         c = _cached(meeting_id=req.meeting_id)
         if c:
             return {"mode": "cached", "brief": c["content"], "warnings": [f"Prepared at {c['created_at']:%H:%M}"],
-                    "latency_ms": 0, "cost_usd": 0, "brief_id": c["id"], "person_id": c["person_id"]}
+                    "latency_ms": 0, "cost_usd": 0, "brief_id": c["id"], "person_id": c["person_id"],
+                    "review": c["content"].get("review")}
     run_id = str(uuid.uuid4())
     try:
         res = await run_brief(req.model_dump(exclude={"fresh"}), run_id, _checkpointer)
@@ -97,7 +98,7 @@ async def brief(req: BriefRequest):
             pid = hits[0]["id"] if len(hits) == 1 else None
         c = _cached(meeting_id=req.meeting_id, person_id=pid)
         if c:
-            res.update(brief=c["content"], mode="stale_cache")
+            res.update(brief=c["content"], mode="stale_cache", review=c["content"].get("review"))
             res["warnings"].append(f"Showing the last good brief from {c['created_at']:%Y-%m-%d %H:%M}.")
     if res["mode"] in ("llm", "fallback"):
         res["brief_id"] = _store(res)

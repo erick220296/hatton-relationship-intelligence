@@ -117,3 +117,43 @@ docstring forbids it, but only the metadata test on the brief path checks it. La
 through our egress allowlist/audit (`privacy/egress.py`), so it is not in the `egress_audit` table.
 The masked prompts sent by `record_generation` contain pseudonyms (`PERSON_1a2b3c`), not real names;
 masking quality is the remaining risk (see test_masking.py).
+
+---
+
+## F05: The fact-checker fails closed and flags briefs for review
+
+**What was wrong.** After the model writes a draft brief, each claim goes through two checks: its
+citation must point at a message that was really in the context, then a second model (the verifier)
+reads the cited source and says whether it supports the claim. But if the verifier was **down**, or was
+**skipped** because time was running out, the claims were kept anyway with a small warning. The verifier
+"failed open": unchecked model text reached the partner, which breaks "states nothing unsupported".
+Also, a claim the verifier simply forgot to judge was kept.
+
+**What changed.** (`src/hri/agent/brief_graph.py`, `src/hri/api/app.py`)
+- If the verifier is unavailable, returns a broken answer, or is skipped for time, **every model-written
+  claim is removed** (listed under `dropped_claims` with reason "not fact-checked: ...") and the graph goes
+  to the facts-only brief (mode `fallback`). Only code-rendered facts are shown. There is no pointless retry.
+- A claim with no verdict from the verifier is now dropped ("no verdict returned"), not kept.
+- Every brief now carries `review: {needed, reasons}` (inside the brief and at the top of the API
+  response; cached and stale-cache responses pass it through). `needed` is true when:
+  the fact-check could not run; the brief is facts-only (mode `fallback`); more than 30% of model claims
+  were removed; or a message was withheld as a prompt-injection attempt. This feeds the review queue (F07).
+  It is stored inside the brief's JSON `content`, so no database change was needed.
+- Tests (`tests/test_brief_graph.py`, 7 new): verifier down → no model text survives, review needed, no
+  retry; the verify step on its own returns `verified.claims == []` when the verifier is down and when it
+  is skipped for time; all claims supported → `review.needed` false; missing verdict → claim dropped;
+  injection message → review reason names the withheld message ID and the injected text never reaches the
+  model; fallback → review needed.
+
+**Course concept.** *Evaluator–optimizer loop / reflection with a guardrail that fails closed*: when the
+check cannot run, treat the output as unverified and withhold it, rather than trusting it. Plus
+*human in the loop*: the `review` flag routes doubtful briefs to a person.
+
+**How to see it working.** `uv run pytest -q tests/test_brief_graph.py`. Live: `make kill-llm`, then
+`curl -s -X POST localhost:8000/brief -H 'content-type: application/json' -d '{"query":"janice.hall@martincapitaladvis.example","fresh":true}'`
+→ `"review": {"needed": true, "reasons": ["Facts-only brief ...", "1 message(s) withheld ... (m039897) ..."]}`. Then `make revive-llm`.
+
+**What still breaks it / limits.** The verifier is a smaller model than the judge, so a claim it wrongly
+marks "supported" still gets through (the 42% judge finding needs the real model to re-measure). The
+injection filter is a regex: a cleverly worded injection is not withheld (but the model is still told
+emails are data, not instructions). The 30% threshold is a judgement call, not tuned.

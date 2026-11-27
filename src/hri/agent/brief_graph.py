@@ -52,6 +52,8 @@ class BriefState(TypedDict, total=False):
     dropped: list
     brief: dict
     mode: str                # llm | fallback | ambiguous | not_found | unavailable
+    unverified: bool         # the fact-check could not run: model-written claims were removed (fail closed)
+    review: list             # reasons a person should review this brief
     warnings: list
     cost_usd: float
     timings: dict
@@ -77,7 +79,7 @@ def _timed(name):
 
 # Langfuse is a third party: node spans never capture state (raw mail, evidence, unmasked brief).
 # They carry only these scalar fields plus the size of every list/dict a node returns.
-_SPAN_SCALARS = {"mode", "person_id", "attempts", "cost_usd"}
+_SPAN_SCALARS = {"mode", "person_id", "attempts", "cost_usd", "unverified"}
 
 
 def _span_counts(fn):
@@ -236,6 +238,7 @@ async def verify(s: BriefState) -> dict:
             claims.append({"section": sec, "text": c["text"], "cites": cites})
     warnings = list(s.get("warnings", []))
     cost = s.get("cost_usd", 0.0)
+    unchecked = None   # why the fact-check could not run, if it could not
     if claims and _elapsed(s) < settings().brief_timeout_s - 6:
         ev, mk = s["evidence"], masker()
         listing = "\n\n".join(f"CLAIM {i}: {c['text']}\nSOURCES:\n" + "\n".join(
@@ -246,23 +249,48 @@ async def verify(s: BriefState) -> dict:
                                                user=listing, purpose="brief_verify", max_tokens=4000,
                                                json_schema=VERIFY_SCHEMA, effort="low")
             cost += res.cost_usd
-            bad = {v["i"]: v["reason"] for v in out["verdicts"] if not v["supported"]}
+            verdicts = {v["i"]: v for v in out["verdicts"]}
             kept = []
-            for i, c in enumerate(claims):
-                if i in bad:
-                    dropped.append({**c, "reason": f"verifier: {bad[i]}"})
-                else:
+            for i, c in enumerate(claims):   # fail closed: a claim with no verdict is not kept
+                v = verdicts.get(i, {"supported": False, "reason": "no verdict returned"})
+                if v["supported"]:
                     kept.append(c)
+                else:
+                    dropped.append({**c, "reason": f"verifier: {v['reason']}"})
             claims = kept
-        except LLMUnavailable:
-            warnings.append("Verifier unavailable: claims are citation-checked but not fact-checked.")
+        except (LLMUnavailable, KeyError, TypeError) as e:   # down, or a malformed verdict list
+            unchecked = f"Verifier unavailable ({e})"
     elif claims:
-        warnings.append("Skipped LLM fact-check to stay inside the latency budget; claims are citation-checked.")
-    return {"verified": {"claims": claims}, "dropped": (s.get("dropped") or []) + dropped,
-            "warnings": warnings, "cost_usd": cost}
+        unchecked = "Fact-check skipped to stay inside the latency budget"
+    out = {"cost_usd": cost}
+    if unchecked:   # fail closed: nothing the model wrote is shown unless it was fact-checked
+        dropped += [{**c, "reason": f"not fact-checked: {unchecked.lower()}"} for c in claims]
+        warnings.append(f"{unchecked}: {len(claims)} model-written claim(s) removed; showing facts-only brief.")
+        out.update(unverified=True, review=(s.get("review") or []) + [
+            f"{unchecked}: {len(claims)} model-written claim(s) could not be fact-checked and were removed."])
+        claims = []
+    out.update(verified={"claims": claims}, dropped=(s.get("dropped") or []) + dropped, warnings=warnings)
+    return out
+
+
+def _review(s: BriefState, mode: str) -> dict:
+    """Why a person should look at this brief before (or instead of) trusting it. Feeds the review queue."""
+    reasons = list(s.get("review") or [])
+    if mode == "fallback":
+        reasons.append("Facts-only brief: no model-written content (language model or fact-checker unavailable).")
+    kept, dropped = len((s.get("verified") or {}).get("claims", [])), len(s.get("dropped") or [])
+    if not s.get("unverified") and kept + dropped and dropped / (kept + dropped) > 0.3:
+        reasons.append(f"{dropped} of {kept + dropped} model-written claims failed citation or fact checks and "
+                       "were removed (over 30%).")
+    if s.get("withheld"):
+        reasons.append(f"{len(s['withheld'])} message(s) withheld because they contained instructions aimed at AI "
+                       f"systems ({', '.join(w['id'] for w in s['withheld'])}); a person should read them.")
+    return {"needed": bool(reasons), "reasons": reasons}
 
 
 def _after_verify(s: BriefState) -> str:
+    if s.get("unverified"):
+        return "fallback"   # fact-check could not run: show only code-rendered facts
     total = len(s["verified"]["claims"]) + len(s.get("dropped") or [])
     ratio = len(s.get("dropped") or []) / total if total else 0
     if ratio > 0.3 and s.get("attempts", 0) < 2 and _elapsed(s) < 12:
@@ -282,6 +310,7 @@ async def finalize(s: BriefState) -> dict:
     brief["dropped_claims"] = [{"text": unmask(d["text"]), "reason": unmask(d["reason"])} for d in s.get("dropped") or []]
     brief["context_stats"] = s["context"]["stats"]
     brief["profile_source"] = s["evidence"]["PROFILE"]   # exactly what PROFILE citations refer to (for audit/eval)
+    brief["review"] = _review(s, "llm")
     return {"brief": brief, "mode": "llm"}
 
 
@@ -292,6 +321,9 @@ async def facts_only(s: BriefState) -> dict:
     brief = fallback.facts_only(s["data"], s.get("partner_email"), s.get("meeting"))
     if s.get("context"):   # what the context budgeter kept/compressed/omitted, even when the model is down
         brief["context_stats"] = s["context"]["stats"]
+    if s.get("dropped"):   # shown as removed, for transparency; never as brief content
+        brief["dropped_claims"] = [{"text": unmask(d["text"]), "reason": unmask(d["reason"])} for d in s["dropped"]]
+    brief["review"] = _review(s, "fallback")
     return {"brief": brief, "mode": "fallback"}
 
 
@@ -320,7 +352,7 @@ def build_graph(checkpointer=None):
     g.add_conditional_edges("gather", _route("build_context"), ["build_context", END])
     g.add_edge("build_context", "generate")
     g.add_conditional_edges("generate", _route("verify"), ["verify", "fallback", END])
-    g.add_conditional_edges("verify", _after_verify, ["generate", "finalize"])
+    g.add_conditional_edges("verify", _after_verify, ["generate", "finalize", "fallback"])
     g.add_edge("finalize", END)
     g.add_edge("fallback", END)
     return g.compile(checkpointer=checkpointer)
@@ -342,7 +374,8 @@ async def run_brief(request: dict[str, Any], run_id: str, checkpointer=None) -> 
            "warnings": out.get("warnings", []), "cost_usd": round(out.get("cost_usd", 0.0), 6),
            "latency_ms": int((time.perf_counter() - t0) * 1000), "timings": out.get("timings", {}),
            "person_id": out.get("person_id"), "partner_email": out.get("partner_email"),
-           "meeting_id": (out.get("meeting") or {}).get("id")}
+           "meeting_id": (out.get("meeting") or {}).get("id"),
+           "review": (out.get("brief") or {}).get("review")}
     tracing.span_meta(mode=res["mode"], person_id=res["person_id"], meeting_id=res["meeting_id"],
                       latency_ms=res["latency_ms"], cost_usd=res["cost_usd"], timings=res["timings"],
                       n_warnings=len(res["warnings"]), n_dropped=len(out.get("dropped") or []))
